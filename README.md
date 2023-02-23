@@ -1,12 +1,8 @@
 # Sunray
 
-## Download
-__WARNING__: Do not use the master version (via download button), that is 'code we work on' and it may be unstable - use one release version instead (click on 'releases' link below)!
-
-https://github.com/Ardumower/Sunray/releases
 
 ## Description
-An alternative Firmware (experimental) for Ardumower kit mowing and gear motors, PCB 1.3, Adafruit Grand Central M4 (or Arduino Due) and ArduSimple RTK kit
+An alternative Firmware (experimental) for Robomow platform PCB 1.3, Adafruit Grand Central M4  and ArduSimple RTK kit
 
 The robot mower uses RTK to localize itself (without a perimeter wire)
 

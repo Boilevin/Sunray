@@ -18,6 +18,8 @@
   #include "../due/DueTimer.h"
 #else
   #include "../agcm4/Adafruit_ZeroTimer.h"    // __SAMD51__
+//bber1
+  #include "../mpu/INA226.h"  // for sense on robomow
 #endif
 
 
@@ -45,8 +47,28 @@ volatile bool rightPressed = false;
 
 
 volatile boolean tone_pin_state = false;
+//bber1
+#ifdef INA226_MOW_SENSE_
+	INA226 CenterMowIna226;
+	INA226 LeftMowIna226;
+	INA226 RightMowIna226;
 
+	float shuntvoltagec = 0;
+	float shuntvoltagel = 0;
+	float shuntvoltager = 0;
+	unsigned long nextTimeMotorSense ;
+	unsigned long lastTimeMotorMowStuck;
+	int motorMowSenseCounter ;
+	float Center_Mow_Power;
+	float Left_Mow_Power;
+	float Right_Mow_Power;
+	float Center_Mow_Current;
+	float Left_Mow_Current;
+	float Right_Mow_Current;
+	float Ina226_Bus_Voltage;
+	float motorMowPowerOverload=1.0; //Frei 15W, Bis 30W ok, 75W NotAus 30W - 50W auf 1.0 - 0.5 in diese Variable zur Speedreduzierung linear beim MÃ¤hen
 
+#endif
 void toneHandler(){  
   digitalWrite(pinBuzzer, tone_pin_state= !tone_pin_state);  
 }
@@ -476,7 +498,12 @@ void AmMotorDriver::getMotorFaults(bool &leftFault, bool &rightFault, bool &mowF
     rightFault = true;
   }
   if (digitalRead(pinMotorMowFault) == mowDriverChip.faultActive) {
-    mowFault = true;
+	//bber1
+	#ifdef INA226_MOW_SENSE_ 
+		mowFault = false; //no feedback
+	#else
+		mowFault = true;
+	#endif
   }
 }
 
@@ -515,12 +542,21 @@ void AmMotorDriver::getMotorCurrent(float &leftCurrent, float &rightCurrent, flo
   rightCurrent = pow(
       ValuePosCheck, gearsDriverChip.adcVoltToAmpPow
       )  * gearsDriverChip.adcVoltToAmpScale;
-
-  ValuePosCheck = (((float)ADC2voltage(analogRead(pinMotorMowSense))) + gearsDriverChip.adcVoltToAmpOfs);
-  if (ValuePosCheck < 0) ValuePosCheck = 0;	// avoid negativ numbers
-  mowCurrent = pow(
-            ValuePosCheck, mowDriverChip.adcVoltToAmpPow
-      )  * mowDriverChip.adcVoltToAmpScale;
+  
+//bber1
+	#ifdef INA226_MOW_SENSE_ 
+		Center_Mow_Current = CenterMowIna226.readShuntCurrent() ;
+	    Left_Mow_Current = LeftMowIna226.readShuntCurrent() ;
+	    Right_Mow_Current = RightMowIna226.readShuntCurrent() ;
+  	    float motorMowCurrent = max(Center_Mow_Current, Left_Mow_Current);
+	    mowCurrent = max(motorMowCurrent, Right_Mow_Current);	        
+	#else
+		ValuePosCheck = (((float)ADC2voltage(analogRead(pinMotorMowSense))) + gearsDriverChip.adcVoltToAmpOfs);
+		if (ValuePosCheck < 0) ValuePosCheck = 0;	// avoid negativ numbers
+		mowCurrent = pow(ValuePosCheck, mowDriverChip.adcVoltToAmpPow)  * mowDriverChip.adcVoltToAmpScale;
+	#endif
+  
+ 
 }
 
 void AmMotorDriver::getMotorEncoderTicks(int &leftTicks, int &rightTicks, int &mowTicks){
@@ -571,7 +607,30 @@ void AmBatteryDriver::begin(){
   pinMode(pinBatteryVoltage, INPUT);
   pinMode(pinChargeVoltage, INPUT);
   pinMode(pinChargeCurrent, INPUT);  
-  myHumidity.begin();      
+  myHumidity.begin();    
+
+	//bber1 
+	#ifdef INA226_MOW_SENSE_ 
+		CONSOLE.println ("Starting all the Ina226 current mow motor ");
+		CenterMowIna226.begin(0x41);
+		LeftMowIna226.begin(0x40);
+		RightMowIna226.begin(0x44);
+
+		// Configure INA226
+		CenterMowIna226.configure(INA226_AVERAGES_4, INA226_BUS_CONV_TIME_1100US, INA226_SHUNT_CONV_TIME_1100US, INA226_MODE_SHUNT_BUS_CONT);
+		LeftMowIna226.configure(INA226_AVERAGES_4, INA226_BUS_CONV_TIME_1100US, INA226_SHUNT_CONV_TIME_1100US, INA226_MODE_SHUNT_BUS_CONT);
+		RightMowIna226.configure(INA226_AVERAGES_4, INA226_BUS_CONV_TIME_1100US, INA226_SHUNT_CONV_TIME_1100US, INA226_MODE_SHUNT_BUS_CONT);
+
+		// Calibrate INA226. Rshunt = 0.01 ohm, Max excepted current = 4A
+		CenterMowIna226.calibrate(0.01, 4);
+		LeftMowIna226.calibrate(0.01, 4);
+		RightMowIna226.calibrate(0.01, 4);
+  
+	#endif
+	
+
+
+  
 }
 
 
