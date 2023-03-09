@@ -48,7 +48,7 @@ volatile bool rightPressed = false;
 
 volatile boolean tone_pin_state = false;
 //bber1
-#ifdef INA226_MOW_SENSE_
+#ifdef INA226_MOW_SENSE
 	INA226 CenterMowIna226;
 	INA226 LeftMowIna226;
 	INA226 RightMowIna226;
@@ -499,7 +499,7 @@ void AmMotorDriver::getMotorFaults(bool &leftFault, bool &rightFault, bool &mowF
   }
   if (digitalRead(pinMotorMowFault) == mowDriverChip.faultActive) {
 	//bber1
-	#ifdef INA226_MOW_SENSE_ 
+	#ifdef INA226_MOW_SENSE 
 		mowFault = false; //no feedback
 	#else
 		mowFault = true;
@@ -544,7 +544,7 @@ void AmMotorDriver::getMotorCurrent(float &leftCurrent, float &rightCurrent, flo
       )  * gearsDriverChip.adcVoltToAmpScale;
   
 //bber1
-	#ifdef INA226_MOW_SENSE_ 
+	#ifdef INA226_MOW_SENSE 
 		Center_Mow_Current = CenterMowIna226.readShuntCurrent() ;
 	    Left_Mow_Current = LeftMowIna226.readShuntCurrent() ;
 	    Right_Mow_Current = RightMowIna226.readShuntCurrent() ;
@@ -610,7 +610,7 @@ void AmBatteryDriver::begin(){
   myHumidity.begin();    
 
 	//bber1 
-	#ifdef INA226_MOW_SENSE_ 
+	#ifdef INA226_MOW_SENSE 
 		CONSOLE.println ("Starting all the Ina226 current mow motor ");
 		CenterMowIna226.begin(0x41);
 		LeftMowIna226.begin(0x40);
