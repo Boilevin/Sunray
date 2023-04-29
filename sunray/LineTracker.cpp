@@ -155,7 +155,7 @@ void trackLine(bool runControl){
   if (!angleToTargetFits){
     // angular control (if angle to far away, rotate to next waypoint)
     linear = 0;
-    angular = 29.0 / 180.0 * PI; //  29 degree/s (0.5 rad/s);               
+    angular = 2 * 29.0 / 180.0 * PI; //  29 degree/s (0.5 rad/s);               
     if ((!rotateLeft) && (!rotateRight)){ // decide for one rotation direction (and keep it)
       int r = 0;
       // no idea but don't work in reverse mode...
@@ -188,7 +188,7 @@ void trackLine(bool runControl){
       rotateLeft = false;
       rotateRight = false;
       // reverse rotation (*-1) - slowly rotate back
-      angular = 10.0 / 180.0 * PI * -1; //  10 degree/s (0.19 rad/s);               
+      angular = 2 * 10.0 / 180.0 * PI * -1; //  10 degree/s (0.19 rad/s);               
     }
     if (rotateRight) angular *= -1;
   } 
@@ -215,19 +215,19 @@ void trackLine(bool runControl){
 
     if (maps.trackSlow && trackslow_allowed) {
       // planner forces slow tracking (e.g. docking etc)
-      linear = 0.1;           
+       linear = setSpeed / 2;           
     } else if (     ((setSpeed > 0.2) && (maps.distanceToTargetPoint(stateX, stateY) < 0.5) && (!straight))   // approaching
           || ((linearMotionStartTime != 0) && (millis() < linearMotionStartTime + 3000))                      // leaving  
        ) 
     {
-      linear = 0.1; // reduce speed when approaching/leaving waypoints          
+      linear = setSpeed / 2; // reduce speed when approaching/leaving waypoints          
     } 
     else {
       if (gps.solution == SOL_FLOAT)        
-        linear = min(setSpeed, 0.1); // reduce speed for float solution
+        linear = min(setSpeed, setSpeed / 2); // reduce speed for float solution
       else
         linear = setSpeed;         // desired speed
-      if (sonar.nearObstacle()) linear = 0.1; // slow down near obstacles
+      if (sonar.nearObstacle()) linear = setSpeed / 2; // slow down near obstacles
     }      
     // slow down speed in case of overload and overwrite all prior speed 
     if ( (motor.motorLeftOverload) || (motor.motorRightOverload) || (motor.motorMowOverload) ){
@@ -235,7 +235,7 @@ void trackLine(bool runControl){
           CONSOLE.println("motor overload detected: reduce linear speed to 0.1");
       }
       printmotoroverload = true;
-      linear = 0.1;  
+      linear = setSpeed / 2;  
     } else {
       printmotoroverload = false;
     }   
@@ -352,5 +352,3 @@ void trackLine(bool runControl){
     }
   }  
 }
-
-
