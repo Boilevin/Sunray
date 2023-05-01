@@ -202,10 +202,23 @@ void cmdMotor(){
 }
 
 void cmdMotorTest(){
-  String s = F("E");
+  String s = F("E1");
   cmdAnswer(s);
   motor.test();  
 }
+
+void cmdMotorRollTest(){
+  String s = F("E2");
+  cmdAnswer(s);
+  motor.rollTest();  
+}
+
+void cmdMotorDistanceTest(){
+  String s = F("E3");
+  cmdAnswer(s);
+  motor.distanceTest();  
+}
+
 
 void cmdMotorPlot(){
   String s = F("Q");
@@ -835,7 +848,14 @@ void processCmd(bool checkCrc, bool decrypt){
   if (cmd[3] == 'P') cmdPosMode();  
   if (cmd[3] == 'T') cmdStats();
   if (cmd[3] == 'L') cmdClearStats();
-  if (cmd[3] == 'E') cmdMotorTest();  
+  if (cmd[3] == 'E') {
+    if (cmd[4] == '1') cmdMotorTest();  
+    if (cmd[4] == '2') cmdMotorRollTest();    
+    if (cmd[4] == '3') cmdMotorDistanceTest();    
+  }
+
+
+    
   if (cmd[3] == 'Q') cmdMotorPlot();  
   if (cmd[3] == 'O'){
     if (cmd.length() <= 4){
