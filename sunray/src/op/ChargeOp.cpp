@@ -74,6 +74,7 @@ void ChargeOp::run(){
         if (battery.chargingHasCompleted()){
             if (millis() > nextConsoleDetailsTime){
                 nextConsoleDetailsTime = millis() + 30000;
+				/*
                 CONSOLE.print("ChargeOp: charging completed (DOCKING_STATION=");
                 CONSOLE.print(DOCKING_STATION);
                 CONSOLE.print(", dockOp.initiatedByOperator=");
@@ -87,6 +88,7 @@ void ChargeOp::run(){
                 CONSOLE.print(", dockOp.dockReasonRainAutoStartTime(min remain)=");
                 CONSOLE.print( ((int)(dockOp.dockReasonRainAutoStartTime - millis())) / 60000 );                
                 CONSOLE.println(")");
+				*/
             }
             if ((DOCKING_STATION) && (!dockOp.initiatedByOperator)) {
                 if (maps.mowPointsIdx > 0){  // if mowing not completed yet

@@ -63,8 +63,8 @@ void Battery::begin()
 // controls charging relay
 void Battery::enableCharging(bool flag){
   if (chargingEnabled == flag) return;
-  DEBUG(F("enableCharging "));
-  DEBUGLN(flag);
+  CONSOLE.print(F("enableCharging "));
+  CONSOLE.println(flag);
   chargingEnabled = flag;
   batteryDriver.enableCharging(flag);      
 	nextPrintTime = 0;  	   	   	
@@ -140,10 +140,10 @@ void Battery::run(){
   if (!chargerConnectedState){
 	  if (chargingVoltage > 7){
       chargerConnectedState = true;		    
-		  DEBUG(F("CHARGER CONNECTED chgV="));      	                    
-      DEBUG(chargingVoltage);      
-      DEBUG(F(" batV="));
-      DEBUGLN(batteryVoltage);
+		  CONSOLE.print(F("CHARGER CONNECTED chgV="));      	                    
+      CONSOLE.print(chargingVoltage);      
+      CONSOLE.print(F(" batV="));
+      CONSOLE.println(batteryVoltage);
       buzzer.sound(SND_OVERCURRENT, true);        
     }
   }
@@ -154,22 +154,22 @@ void Battery::run(){
       if (chargingVoltage <= 5){
         chargerConnectedState = false;
         nextEnableTime = millis() + 5000;  	 // reset charging enable time  	   	 
-        DEBUG(F("CHARGER DISCONNECTED chgV="));
-        DEBUG(chargingVoltage);        
-        DEBUG(F(" batV="));
-        DEBUGLN(batteryVoltage);                
+        CONSOLE.print(F("CHARGER DISCONNECTED chgV="));
+        CONSOLE.print(chargingVoltage);        
+        CONSOLE.print(F(" batV="));
+        CONSOLE.println(batteryVoltage);                
       }
     }      		
     timeMinutes = (millis()-chargingStartTime) / 1000 /60;
     if (underVoltage()) {
-      DEBUG(F("SWITCHING OFF (undervoltage) batV="));
-      DEBUG(batteryVoltage);
-      DEBUG("<");
-      DEBUGLN(batSwitchOffIfBelow);
+      CONSOLE.print(F("SWITCHING OFF (undervoltage) batV="));
+      CONSOLE.print(batteryVoltage);
+      CONSOLE.print("<");
+      CONSOLE.println(batSwitchOffIfBelow);
       buzzer.sound(SND_OVERCURRENT, true);
       if (switchOffAllowedUndervoltage)  batteryDriver.keepPowerOn(false);     
     } else if ((millis() >= switchOffTime) || (switchOffByOperator)) {
-      DEBUGLN(F("SWITCHING OFF (idle timeout)"));              
+      CONSOLE.println(F("SWITCHING OFF (idle timeout)"));              
       buzzer.sound(SND_OVERCURRENT, true);
       if ((switchOffAllowedIdle) || (switchOffByOperator)) batteryDriver.keepPowerOn(false);
     } else batteryDriver.keepPowerOn(true);              
@@ -187,14 +187,14 @@ void Battery::run(){
           if (chargingVoltBatteryVoltDiff < -1.0){
           //if (batteryVoltageSlope < 0){
             badChargerContactState = true;
-            DEBUG(F("CHARGER BAD CONTACT chgV="));
-            DEBUG(chargingVoltage);
-            DEBUG(" batV=");
-            DEBUG(batteryVoltage);
-            DEBUG(" diffV=");
-            DEBUG(chargingVoltBatteryVoltDiff);
-            DEBUG(" slope(v/min)=");
-            DEBUGLN(batteryVoltageSlope);
+            CONSOLE.print(F("CHARGER BAD CONTACT chgV="));
+            CONSOLE.print(chargingVoltage);
+            CONSOLE.print(" batV=");
+            CONSOLE.print(batteryVoltage);
+            CONSOLE.print(" diffV=");
+            CONSOLE.print(chargingVoltBatteryVoltDiff);
+            CONSOLE.print(" slope(v/min)=");
+            CONSOLE.println(batteryVoltageSlope);
           }      
         } 
       } 
@@ -204,23 +204,23 @@ void Battery::run(){
 			nextPrintTime = millis() + 60000;  // 1 minute  	   	   	
 			
       //print();			
-			/*DEBUG(F("charger conn="));
-			DEBUG(chargerConnected());
-			DEBUG(F(" chgEnabled="));
-			DEBUG(chargingEnabled);
-			DEBUG(F(" chgTime="));      
-			DEBUG(timeMinutes);
-			DEBUG(F(" charger: "));      
-			DEBUG(chargingVoltage);
-			DEBUG(F(" V  "));    
-			DEBUG(chargingCurrent);   
-			DEBUG(F(" A "));         
-			DEBUG(F(" bat: "));
-			DEBUG(batteryVoltage);
-			DEBUG(F(" V  "));    
-			DEBUG(F("switchOffAllowed="));   
-			DEBUG(switchOffAllowed);      
-			DEBUGLN();      */					
+			/*CONSOLE.print(F("charger conn="));
+			CONSOLE.print(chargerConnected());
+			CONSOLE.print(F(" chgEnabled="));
+			CONSOLE.print(chargingEnabled);
+			CONSOLE.print(F(" chgTime="));      
+			CONSOLE.print(timeMinutes);
+			CONSOLE.print(F(" charger: "));      
+			CONSOLE.print(chargingVoltage);
+			CONSOLE.print(F(" V  "));    
+			CONSOLE.print(chargingCurrent);   
+			CONSOLE.print(F(" A "));         
+			CONSOLE.print(F(" bat: "));
+			CONSOLE.print(batteryVoltage);
+			CONSOLE.print(F(" V  "));    
+			CONSOLE.print(F("switchOffAllowed="));   
+			CONSOLE.print(switchOffAllowed);      
+			CONSOLE.println();      */					
     }	
   }
   
