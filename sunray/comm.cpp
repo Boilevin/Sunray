@@ -1227,10 +1227,10 @@ void processComm(){
 // output summary on console
 void outputConsole(){
   //bber add return
-  return;
+  //return;
   if (millis() > nextInfoTime){        
     bool started = (nextInfoTime == 0);
-    nextInfoTime = millis() + 5000;                   
+    nextInfoTime = millis() + 20000;                   
     unsigned long totalsecs = millis()/1000;
     unsigned long totalmins = totalsecs/60;
     unsigned long hour = totalmins/60;
@@ -1266,6 +1266,7 @@ void outputConsole(){
       CONSOLE.print (" sp=");
       CONSOLE.print (*spReg, HEX);
     #endif
+    /*
     CONSOLE.print(" bat=");
     CONSOLE.print(battery.batteryVoltage);
     CONSOLE.print(",");
@@ -1306,6 +1307,7 @@ void outputConsole(){
     CONSOLE.print(gps.solution);
     CONSOLE.print(" age=");    
     CONSOLE.print((millis()-gps.dgpsAge)/1000.0);
+    */
     CONSOLE.println();
     //logCPUHealth();    
   }
