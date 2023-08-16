@@ -23,7 +23,7 @@
 #endif
 
 
-#define SUPER_SPIKE_ELIMINATOR 1  // advanced spike elimination  (experimental, comment out to disable)
+//#define SUPER_SPIKE_ELIMINATOR 1  // advanced spike elimination  (experimental, comment out to disable)
 
 
 volatile int odomTicksLeft  = 0;
@@ -66,7 +66,8 @@ volatile boolean tone_pin_state = false;
 	float Left_Mow_Current;
 	float Right_Mow_Current;
 	float Ina226_Bus_Voltage;
-	float motorMowPowerOverload=1.0; //Frei 15W, Bis 30W ok, 75W NotAus 30W - 50W auf 1.0 - 0.5 in diese Variable zur Speedreduzierung linear beim MÃ¤hen
+  boolean powerboard_I2c_line_Ok;
+	//float motorMowPowerOverload=1.0; //Frei 15W, Bis 30W ok, 75W NotAus 30W - 50W auf 1.0 - 0.5 in diese Variable zur Speedreduzierung linear beim MÃ¤hen
 
 #endif
 void toneHandler(){  
@@ -139,38 +140,15 @@ void OdometryMowISR(){
 
 
 void OdometryLeftISR(){			  
-  if (digitalRead(pinOdometryLeft) == LOW) return;
-  if (millis() < motorLeftTicksTimeout) return; // eliminate spikes  
-  #ifdef SUPER_SPIKE_ELIMINATOR
-    unsigned long duration = millis() - motorLeftTransitionTime;
-    if (duration > 5) duration = 0;
-    motorLeftTransitionTime = millis();
-    motorLeftDurationMax = 0.7 * max(motorLeftDurationMax, ((float)duration));
-    motorLeftTicksTimeout = millis() + motorLeftDurationMax;
-  #else
-    motorLeftTicksTimeout = millis() + 1;
-  #endif
-  odomTicksLeft++;    
+  odomTicksLeft++; 
+  asm("dsb");      
 }
 
 void OdometryRightISR(){			
-  if (digitalRead(pinOdometryRight) == LOW) return;  
-  if (millis() < motorRightTicksTimeout) return; // eliminate spikes
-  #ifdef SUPER_SPIKE_ELIMINATOR
-    unsigned long duration = millis() - motorRightTransitionTime;
-    if (duration > 5) duration = 0;  
-    motorRightTransitionTime = millis();
-    motorRightDurationMax = 0.7 * max(motorRightDurationMax, ((float)duration));  
-    motorRightTicksTimeout = millis() + motorRightDurationMax;
-  #else
-    motorRightTicksTimeout = millis() + 1;
-  #endif
-  odomTicksRight++;        
   
-  #ifdef TEST_PIN_ODOMETRY
-    testValue = !testValue;
-    digitalWrite(pinKeyArea2, testValue);  
-  #endif
+  odomTicksRight++; 
+  asm("dsb");          
+  
 }
 
 
@@ -274,6 +252,25 @@ AmMotorDriver::AmMotorDriver(){
   JYQD.adcVoltToAmpScale = 7.57; // ADC voltage to amps (scale)
   JYQD.adcVoltToAmpPow = 1.0;    // ADC voltage to amps (power of number)
 
+  // owlDrive 
+  OWL.driverName = "owlDrive";    // just a name for your driver
+  OWL.forwardPwmInvert = false; // invert PWM signal for forward? (false or true)
+  OWL.forwardDirLevel = LOW;    // logic level for forward (LOW or HIGH)
+  OWL.reversePwmInvert = false; // invert PWM signal for reverse? (false or true)
+  OWL.reverseDirLevel = HIGH;   // logic level for reverse (LOW or HIGH)
+  OWL.usePwmRamp = false;       // use a ramp to get to PWM value?    
+  OWL.faultActive = LOW;        // fault active level (LOW or HIGH)
+  OWL.resetFaultByToggleEnable = false; // reset a fault by toggling enable? 
+  OWL.enableActive = LOW;       // enable active level (LOW or HIGH)
+  OWL.disableAtPwmZeroSpeed=false;  // disable driver at PWM zero speed? (brake function)
+  OWL.keepPwmZeroSpeed = false;  // keep PWM zero value (disregard minPwmSpeed at zero speed)?
+  OWL.minPwmSpeed = 0;          // minimum PWM speed your driver can operate
+  OWL.maxPwmSpeed = 255;          
+  OWL.pwmFreq = PWM_FREQ_29300;  // choose between PWM_FREQ_3900 and PWM_FREQ_29300 here   
+  OWL.adcVoltToAmpOfs = -1.65;      // ADC voltage to amps (offset)        // brushless-adapter: 0A=1.65V, resolution 132mV/A
+  OWL.adcVoltToAmpScale = 7.57; // ADC voltage to amps (scale)
+  OWL.adcVoltToAmpPow = 1.0;    // ADC voltage to amps (power of number)
+
   // your custom brushed/brushless driver (ACT-8015A, JYQD_V7.3E3, etc.)
   CUSTOM.driverName = "CUSTOM";    // just a name for your driver
   CUSTOM.forwardPwmInvert = false; // invert PWM signal for forward? (false or true)
@@ -316,6 +313,8 @@ void AmMotorDriver::begin(){
       mowDriverChip = BLDC8015A;    
     #elif MOTOR_DRIVER_BRUSHLESS_MOW_JYQD
       mowDriverChip = JYQD;
+    #elif MOTOR_DRIVER_BRUSHLESS_MOW_OWL
+      mowDriverChip = OWL;
     #else 
       mowDriverChip = CUSTOM;
     #endif
@@ -328,6 +327,8 @@ void AmMotorDriver::begin(){
       gearsDriverChip = BLDC8015A;    
     #elif MOTOR_DRIVER_BRUSHLESS_GEARS_JYQD
       gearsDriverChip = JYQD;
+    #elif MOTOR_DRIVER_BRUSHLESS_GEARS_OWL
+      gearsDriverChip = OWL;
     #else 
       gearsDriverChip = CUSTOM;
     #endif
@@ -373,8 +374,8 @@ void AmMotorDriver::begin(){
   pinMode(pinLift, INPUT_PULLUP);
 
   // enable interrupts
-  attachInterrupt(pinOdometryLeft, OdometryLeftISR, CHANGE);  
-  attachInterrupt(pinOdometryRight, OdometryRightISR, CHANGE);  
+  attachInterrupt(pinOdometryLeft, OdometryLeftISR, RISING);  
+  attachInterrupt(pinOdometryRight, OdometryRightISR, RISING);  
   attachInterrupt(pinMotorMowRpm, OdometryMowISR, CHANGE);  
     
 	//pinMan.setDebounce(pinOdometryLeft, 100);  // reject spikes shorter than usecs on pin
@@ -382,6 +383,51 @@ void AmMotorDriver::begin(){
   
   leftSpeedSign = rightSpeedSign = mowSpeedSign = 1;
   lastRightPwm = lastLeftPwm = lastMowPwm = 0;
+
+
+	//bber1 
+	#ifdef INA226_MOW_SENSE 
+		CONSOLE.println ("Starting Ina226 current mow motor ");
+		CenterMowIna226.begin(0x41);
+		LeftMowIna226.begin(0x40);
+		RightMowIna226.begin(0x44);
+
+     CONSOLE.println ("Checking  ina226 current sensor connection");
+    //check sense powerboard i2c connection
+    powerboard_I2c_line_Ok = true;
+  
+    if (!CenterMowIna226.isConnected(0x41)) {
+    CONSOLE.println("INA226 Center MOW is not OK");
+    powerboard_I2c_line_Ok = false;
+    }
+    if ( (!LeftMowIna226.isConnected(0x40))) {
+    CONSOLE.println("INA226 Left Mow is not OK");
+    powerboard_I2c_line_Ok = false;
+    }
+    if ((!RightMowIna226.isConnected(0x44))) {
+    CONSOLE.println("INA226 Right Mow is not OK");
+    powerboard_I2c_line_Ok = false;
+    }
+
+    if (powerboard_I2c_line_Ok)
+    {
+    CONSOLE.println("All Ina226 are OK ");
+    // Configure INA226
+    // Configure INA226
+    CenterMowIna226.configure(INA226_AVERAGES_4, INA226_BUS_CONV_TIME_1100US, INA226_SHUNT_CONV_TIME_1100US, INA226_MODE_SHUNT_BUS_CONT);
+    LeftMowIna226.configure(INA226_AVERAGES_4, INA226_BUS_CONV_TIME_1100US, INA226_SHUNT_CONV_TIME_1100US, INA226_MODE_SHUNT_BUS_CONT);
+    RightMowIna226.configure(INA226_AVERAGES_4, INA226_BUS_CONV_TIME_1100US, INA226_SHUNT_CONV_TIME_1100US, INA226_MODE_SHUNT_BUS_CONT);
+
+    // Calibrate INA226. Rshunt = 0.01 ohm, Max excepted current = 4A
+    CenterMowIna226.calibrate(0.01, 4);
+    LeftMowIna226.calibrate(0.01, 4);
+    RightMowIna226.calibrate(0.01, 4);
+    }
+
+#endif
+
+
+
 }
 
 
@@ -498,7 +544,7 @@ void AmMotorDriver::getMotorFaults(bool &leftFault, bool &rightFault, bool &mowF
     rightFault = true;
   }
   if (digitalRead(pinMotorMowFault) == mowDriverChip.faultActive) {
-	//bber1
+    //bber1
 	#ifdef INA226_MOW_SENSE 
 		mowFault = false; //no feedback
 	#else
@@ -530,6 +576,7 @@ void AmMotorDriver::resetMotorFaults(){
 
 void AmMotorDriver::getMotorCurrent(float &leftCurrent, float &rightCurrent, float &mowCurrent){
   // current (amps)= ((ADCvoltage + ofs)^pow) * scale
+ 
   float ValuePosCheck	= 0;
   ValuePosCheck = (((float)ADC2voltage(analogRead(pinMotorLeftSense))) + gearsDriverChip.adcVoltToAmpOfs);
   if (ValuePosCheck < 0) ValuePosCheck = 0;	// avoid negativ numbers
@@ -542,21 +589,23 @@ void AmMotorDriver::getMotorCurrent(float &leftCurrent, float &rightCurrent, flo
   rightCurrent = pow(
       ValuePosCheck, gearsDriverChip.adcVoltToAmpPow
       )  * gearsDriverChip.adcVoltToAmpScale;
-  
+
 //bber1
+
+  if (!powerboard_I2c_line_Ok) return;
 	#ifdef INA226_MOW_SENSE 
-		Center_Mow_Current = CenterMowIna226.readShuntCurrent() ;
+		  Center_Mow_Current = CenterMowIna226.readShuntCurrent() ;
 	    Left_Mow_Current = LeftMowIna226.readShuntCurrent() ;
 	    Right_Mow_Current = RightMowIna226.readShuntCurrent() ;
-  	    float motorMowCurrent = max(Center_Mow_Current, Left_Mow_Current);
+  	  float motorMowCurrent = max(Center_Mow_Current, Left_Mow_Current);
 	    mowCurrent = max(motorMowCurrent, Right_Mow_Current);	        
 	#else
-		ValuePosCheck = (((float)ADC2voltage(analogRead(pinMotorMowSense))) + gearsDriverChip.adcVoltToAmpOfs);
-		if (ValuePosCheck < 0) ValuePosCheck = 0;	// avoid negativ numbers
-		mowCurrent = pow(ValuePosCheck, mowDriverChip.adcVoltToAmpPow)  * mowDriverChip.adcVoltToAmpScale;
-	#endif
-  
- 
+  ValuePosCheck = (((float)ADC2voltage(analogRead(pinMotorMowSense))) + gearsDriverChip.adcVoltToAmpOfs);
+  if (ValuePosCheck < 0) ValuePosCheck = 0;	// avoid negativ numbers
+  mowCurrent = pow(
+            ValuePosCheck, mowDriverChip.adcVoltToAmpPow
+      )  * mowDriverChip.adcVoltToAmpScale;
+  #endif
 }
 
 void AmMotorDriver::getMotorEncoderTicks(int &leftTicks, int &rightTicks, int &mowTicks){
@@ -607,30 +656,7 @@ void AmBatteryDriver::begin(){
   pinMode(pinBatteryVoltage, INPUT);
   pinMode(pinChargeVoltage, INPUT);
   pinMode(pinChargeCurrent, INPUT);  
-  myHumidity.begin();    
-
-	//bber1 
-	#ifdef INA226_MOW_SENSE 
-		CONSOLE.println ("Starting all the Ina226 current mow motor ");
-		CenterMowIna226.begin(0x41);
-		LeftMowIna226.begin(0x40);
-		RightMowIna226.begin(0x44);
-
-		// Configure INA226
-		CenterMowIna226.configure(INA226_AVERAGES_4, INA226_BUS_CONV_TIME_1100US, INA226_SHUNT_CONV_TIME_1100US, INA226_MODE_SHUNT_BUS_CONT);
-		LeftMowIna226.configure(INA226_AVERAGES_4, INA226_BUS_CONV_TIME_1100US, INA226_SHUNT_CONV_TIME_1100US, INA226_MODE_SHUNT_BUS_CONT);
-		RightMowIna226.configure(INA226_AVERAGES_4, INA226_BUS_CONV_TIME_1100US, INA226_SHUNT_CONV_TIME_1100US, INA226_MODE_SHUNT_BUS_CONT);
-
-		// Calibrate INA226. Rshunt = 0.01 ohm, Max excepted current = 4A
-		CenterMowIna226.calibrate(0.01, 4);
-		LeftMowIna226.calibrate(0.01, 4);
-		RightMowIna226.calibrate(0.01, 4);
-  
-	#endif
-	
-
-
-  
+  myHumidity.begin();      
 }
 
 
@@ -669,7 +695,7 @@ void AmBatteryDriver::enableCharging(bool flag){
 }
 
 void AmBatteryDriver::keepPowerOn(bool flag){
-	if (!flag){ //power off need a delay to leave raspberry pi poweroff also
+ if (!flag){ //power off need a delay to leave raspberry pi poweroff also
       for (int i = 0; i < 30; i++)
       {
       delay(1000);

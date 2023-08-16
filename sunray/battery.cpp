@@ -24,11 +24,12 @@
 // alfred:   Samsung INR18650-15M, 7 cells in series, nominal voltage 3.6v 
 
 void Battery::begin()
-{
+{  
   startupPhase = 0;
   nextBatteryTime = 0;
   nextCheckTime = 0;
   nextEnableTime = 0;
+  batteryVoltageSlopeLowCounter = 0;
   nextSlopeTime = 0;
 	timeMinutes=0;  
   chargingVoltage = 0;
@@ -38,7 +39,8 @@ void Battery::begin()
   badChargerContactState = false;      
   chargingCompleted = false;
   chargingEnabled = true;
-  
+  docked = false;
+
   batMonitor = true;              // monitor battery and charge voltage?      
   batGoHomeIfBelow = GO_HOME_VOLTAGE; // 21.5  drive home voltage (Volt)  
   batSwitchOffIfBelow = 18.9;  // switch off battery if below voltage (Volt)  
@@ -54,7 +56,8 @@ void Battery::begin()
   switchOffByOperator = false;
   switchOffAllowedUndervoltage = BAT_SWITCH_OFF_UNDERVOLTAGE;
   switchOffAllowedIdle = BAT_SWITCH_OFF_IDLE;
-
+  startChargingIfBelow = 25;
+  
   enableCharging(false);
   resetIdle();    
 }
@@ -63,8 +66,8 @@ void Battery::begin()
 // controls charging relay
 void Battery::enableCharging(bool flag){
   if (chargingEnabled == flag) return;
-  CONSOLE.print(F("enableCharging "));
-  CONSOLE.println(flag);
+  DEBUG(F("enableCharging "));
+  DEBUGLN(flag);
   chargingEnabled = flag;
   batteryDriver.enableCharging(flag);      
 	nextPrintTime = 0;  	   	   	
@@ -72,6 +75,16 @@ void Battery::enableCharging(bool flag){
 
 bool Battery::chargerConnected(){
   return chargerConnectedState;  
+}
+
+bool Battery::isDocked(){
+  return docked;
+}
+
+void Battery::setIsDocked(bool state){
+  CONSOLE.print("battery.setIsDocked ");
+  CONSOLE.println(state);
+  docked = state;
 }
 
 bool Battery::badChargerContact(){
@@ -140,10 +153,10 @@ void Battery::run(){
   if (!chargerConnectedState){
 	  if (chargingVoltage > 7){
       chargerConnectedState = true;		    
-		  CONSOLE.print(F("CHARGER CONNECTED chgV="));      	                    
-      CONSOLE.print(chargingVoltage);      
-      CONSOLE.print(F(" batV="));
-      CONSOLE.println(batteryVoltage);
+		  DEBUG(F("CHARGER CONNECTED chgV="));      	                    
+      DEBUG(chargingVoltage);      
+      DEBUG(F(" batV="));
+      DEBUGLN(batteryVoltage);
       buzzer.sound(SND_OVERCURRENT, true);        
     }
   }
@@ -154,22 +167,22 @@ void Battery::run(){
       if (chargingVoltage <= 5){
         chargerConnectedState = false;
         nextEnableTime = millis() + 5000;  	 // reset charging enable time  	   	 
-        CONSOLE.print(F("CHARGER DISCONNECTED chgV="));
-        CONSOLE.print(chargingVoltage);        
-        CONSOLE.print(F(" batV="));
-        CONSOLE.println(batteryVoltage);                
+        DEBUG(F("CHARGER DISCONNECTED chgV="));
+        DEBUG(chargingVoltage);        
+        DEBUG(F(" batV="));
+        DEBUGLN(batteryVoltage);                
       }
     }      		
     timeMinutes = (millis()-chargingStartTime) / 1000 /60;
     if (underVoltage()) {
-      CONSOLE.print(F("SWITCHING OFF (undervoltage) batV="));
-      CONSOLE.print(batteryVoltage);
-      CONSOLE.print("<");
-      CONSOLE.println(batSwitchOffIfBelow);
+      DEBUG(F("SWITCHING OFF (undervoltage) batV="));
+      DEBUG(batteryVoltage);
+      DEBUG("<");
+      DEBUGLN(batSwitchOffIfBelow);
       buzzer.sound(SND_OVERCURRENT, true);
       if (switchOffAllowedUndervoltage)  batteryDriver.keepPowerOn(false);     
     } else if ((millis() >= switchOffTime) || (switchOffByOperator)) {
-      CONSOLE.println(F("SWITCHING OFF (idle timeout)"));              
+      DEBUGLN(F("SWITCHING OFF (idle timeout)"));              
       buzzer.sound(SND_OVERCURRENT, true);
       if ((switchOffAllowedIdle) || (switchOffByOperator)) batteryDriver.keepPowerOn(false);
     } else batteryDriver.keepPowerOn(true);              
@@ -187,40 +200,45 @@ void Battery::run(){
           if (chargingVoltBatteryVoltDiff < -1.0){
           //if (batteryVoltageSlope < 0){
             badChargerContactState = true;
-            CONSOLE.print(F("CHARGER BAD CONTACT chgV="));
-            CONSOLE.print(chargingVoltage);
-            CONSOLE.print(" batV=");
-            CONSOLE.print(batteryVoltage);
-            CONSOLE.print(" diffV=");
-            CONSOLE.print(chargingVoltBatteryVoltDiff);
-            CONSOLE.print(" slope(v/min)=");
-            CONSOLE.println(batteryVoltageSlope);
+            DEBUG(F("CHARGER BAD CONTACT chgV="));
+            DEBUG(chargingVoltage);
+            DEBUG(" batV=");
+            DEBUG(batteryVoltage);
+            DEBUG(" diffV=");
+            DEBUG(chargingVoltBatteryVoltDiff);
+            DEBUG(" slope(v/min)=");
+            DEBUGLN(batteryVoltageSlope);
           }      
         } 
-      } 
+      }
+      if (abs(batteryVoltageSlope) < 0.002){
+        batteryVoltageSlopeLowCounter = min(10, batteryVoltageSlopeLowCounter + 1);
+      } else {
+        batteryVoltageSlopeLowCounter = 0; //max(0, batteryVoltageSlopeLowCounter - 1);
+      }
     }
 
 		if (millis() >= nextPrintTime){
 			nextPrintTime = millis() + 60000;  // 1 minute  	   	   	
 			
       //print();			
-			/*CONSOLE.print(F("charger conn="));
-			CONSOLE.print(chargerConnected());
-			CONSOLE.print(F(" chgEnabled="));
-			CONSOLE.print(chargingEnabled);
-			CONSOLE.print(F(" chgTime="));      
-			CONSOLE.print(timeMinutes);
-			CONSOLE.print(F(" charger: "));      
-			CONSOLE.print(chargingVoltage);
-			CONSOLE.print(F(" V  "));    
-			CONSOLE.print(chargingCurrent);   
-			CONSOLE.print(F(" A "));         
-			CONSOLE.print(F(" bat: "));
-			CONSOLE.print(batteryVoltage);
-			CONSOLE.print(F(" V  "));    
-			CONSOLE.print(F("switchOffAllowed="));   
-			CONSOLE.print(switchOffAllowed);      
-			CONSOLE.println();      */					
+			/*DEBUG(F("charger conn="));
+			DEBUG(chargerConnected());
+			DEBUG(F(" chgEnabled="));
+			DEBUG(chargingEnabled);
+			DEBUG(F(" chgTime="));      
+			DEBUG(timeMinutes);
+			DEBUG(F(" charger: "));      
+			DEBUG(chargingVoltage);
+			DEBUG(F(" V  "));    
+			DEBUG(chargingCurrent);   
+			DEBUG(F(" A "));         
+			DEBUG(F(" bat: "));
+			DEBUG(batteryVoltage);
+			DEBUG(F(" V  "));    
+			DEBUG(F("switchOffAllowed="));   
+			DEBUG(switchOffAllowed);      
+			DEBUGLN();      */					
     }	
   }
   
@@ -233,7 +251,7 @@ void Battery::run(){
           //if ((timeMinutes > 180) || (chargingCurrent < batFullCurrent)) {   
           // https://github.com/Ardumower/Sunray/issues/32               
           if (chargingCompletedDelay > 5) {  // chargingCompleted check first after 6 * 5000ms = 30sec. 
-            chargingCompleted = ((chargingCurrent <= batFullCurrent) || (batteryVoltage >= batFullVoltage)); 
+            chargingCompleted = ((chargingCurrent <= batFullCurrent) || (batteryVoltage >= batFullVoltage) || (batteryVoltageSlopeLowCounter > 5)); 
           } 
           else {           
             chargingCompletedDelay++;  

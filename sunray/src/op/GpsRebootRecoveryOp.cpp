@@ -29,7 +29,7 @@ void GpsRebootRecoveryOp::run(){
     battery.resetIdle();
     if (millis() > retryOperationTime){
         // restart current operation from new position (restart path planning)
-        CONSOLE.println("restarting operation (retryOperationTime)");
+        CONSOLE.println("Stop everything and restarting operation (retryOperationTime)");
         retryOperationTime = 0;
         motor.stopImmediately(true);
         changeOp(*nextOp);    // restart current operation      

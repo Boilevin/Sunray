@@ -1,14 +1,20 @@
-#!/usr/bin/env python3
-PiVersion="19"
+###!/usr/bin/env python3
+
+PiVersion="57"
+from pathlib import Path
 import traceback
 import sys
 import serial
-#import pynmea2
 import time
+#import datetime
+#now=datetime.datetime.now().strftime('%H:%M:%S')
 import csv
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+#from matplotlib.animation import FuncAnimation
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-
+from shapely import geometry
+from shapely import MultiPolygon, Polygon
 
 import numpy as np
 import subprocess 
@@ -50,14 +56,18 @@ from config import Sender3AdressIP
 from config import useVision
 from config import visionDetectMinScore
 
+from config import max_map_inUse
+
 #Show video in tkinter canvas but very slow
 if(useVision):
     from PIL import Image,ImageTk
 
 import threading
-#import sunray_mower
 
 
+
+
+#matplotlib navigation vertical bar 
 class VerticalNavigationToolbar2Tk(NavigationToolbar2Tk):
    def __init__(self, canvas, window):
       super().__init__(canvas, window, pack_toolbar=False)
@@ -79,154 +89,6 @@ class VerticalNavigationToolbar2Tk(NavigationToolbar2Tk):
       pass
     
    
-
-if(useMqtt):   
-    import paho.mqtt.client as mqtt_client
-    KEEP_ALIVE  = 60
-    Mqqt_client = mqtt_client.Client( client_id = Mqtt_MowerName)
-    Mqqt_client.connected_flag=False # create flag in class
-       
-    def Mqqt_on_log( Mqqt_client, userdata, level, buf ):
-        #consoleInsertText("log: ",buf)
-        print( "log: ",str(buf))
-
-    def Mqqt_on_connect( Mqqt_client, userdata, flags, rc ):
-        if rc==0:           
-            Mqqt_client.connected_flag=True #set flag
-            print("MQTT connected "+ '\n')
-            consoleInsertText("MQTT connected "+ '\n')
-            #initialize all for next loop update MQTT data
-            mymower.state=255
-            mymower.batteryVoltage=0
-            mymower.lastMqttBatteryValue=0
-            mymower.Dht22Temp=0
-            
-            sendMqtt(Mqtt_MowerName + "/Status",str(myRobot.statusNames[mymower.status]))
-            
-                
-            
-            
-            
-        else:
-            Mqqt_client.connected_flag=False
-            print("MQTT Bad connection Returned Code:" + str(rc) +'\n')
-            consoleInsertText("MQTT Bad connection Returned Code:" + str(rc) +'\n')
-            
-            
-            
-    def Mqqt_on_disconnect( Mqqt_client, userdata, rc ):
-        Mqqt_client.connected_flag=False
-        Mqqt_client.loop_stop()    #Stop loop
-        mymower.timeToReconnectMqtt=time.time()+20
-        print("MQTT Disconnected Code:" + str(rc) + '\n')
-        consoleInsertText("MQTT Disconnected Code:" + str(rc) + '\n')
-                    
-    def Mqqt_on_publish( Mqqt_client, userdata, result ):       
-        if (Mqqt_client.connected_flag) :
-            mymower.callback_id=int(result)
-            #consoleInsertText("MQTT Callback message  " + str(mymower.callback_id) + '\n')
-            print("MQTT Callback message  " + str(mymower.callback_id) + '\n')
-        else:
-            #consoleInsertText("MQTT Callback error last message id  " + mymower.mqtt_message_id + " return " + str(mymower.callback_id) + '\n')
-            print("MQTT Callback error last message id  " + str(mymower.mqtt_message_id) + " return " + str(mymower.callback_id) + '\n')
-            mymower.callback_id=0
-            #receive a callback from the last message send before disconnect
-         
-    def Mqqt_on_message( Mqqt_client, userdata, message ):
-        consoleInsertText( "Reception message MQTT..." + '\n')
-        consoleInsertText( "Topic : %s" % message.topic + " Data  : %s" % message.payload + '\n')
-        message_txt=str((message.payload),'utf8')
-        responsetable=message_txt.split(";")
-        #Here the main option to do from COMMAND topic
-        if(str(message.topic)==Mqtt_MowerName + "/COMMAND/VIDEO/" or str(message.topic)==Mqtt_MowerName + "/COMMAND/VIDEO"):
-            if(message_txt=="ON"):
-                consoleInsertText("Start Video streaming" + '\n')
-                myStreamVideo.start(0)
-            if(message_txt=='OFF'):
-                consoleInsertText("Stop Video streaming" + '\n')
-                myStreamVideo.stop()    
-                
-        if(str(message.topic)==Mqtt_MowerName + "/COMMAND/" or str(message.topic)==Mqtt_MowerName + "/COMMAND"):
-            if(str(responsetable[0]) == "HOME"):
-                button_home_click()
-            if(str(responsetable[0]) == "STOP"):
-                button_stop_all_click()
-            if(str(responsetable[0]) == "START"):
-                buttonStartMow_click()
-            if(str(responsetable[0]) == "MOWPATTERN"):
-                #Maybe need to stop and restart to mow between change ???
-                tk_mowingPattern.set(int(responsetable[1]))
-                send_var_message('w','mowPatternCurr',''+str(tk_mowingPattern.get())+'','0','0','0','0','0','0','0')
-            if(str(responsetable[0]) == "PAUSE"):
-                tempVar=mymower.millis + (3600000*int(responsetable[1]))
-                send_var_message('w','nextTimeTimer',''+str(tempVar)+'','0','0','0','0','0','0','0')
-
-            if(str(responsetable[0]) == "STARTTIMER"):
-                send_var_message('w','mowPatternCurr',''+str(responsetable[1])+'','laneUseNr',''+str(responsetable[2])+'','rollDir',''+str(responsetable[3])+'','0','0','0')
-                send_var_message('w','whereToStart',''+str(responsetable[4])+'','areaToGo',''+str(responsetable[5])+'','actualLenghtByLane',''+str(responsetable[6])+'','0','0','0')
-                send_pfo_message('rv','1','2','3','4','5','6',)
-
-
-    #the on_log and on_publish show debug message in terminal
-    if (Mqtt_ShowDebug):
-        Mqqt_client.on_log = Mqqt_on_log
-        Mqqt_client.on_publish = Mqqt_on_publish
-    Mqqt_client.on_message = Mqqt_on_message
-    Mqqt_client.on_connect = Mqqt_on_connect
-    Mqqt_client.on_disconnect = Mqqt_on_disconnect   
-    
-
-    def Mqqt_DisConnection():
-        Mqqt_client.loop_stop()    #Stop loop 
-        Mqqt_client.disconnect() # disconnect
-        
-    def Mqqt_Connection():
-        consoleInsertText("PING Broker" + '\n')
-        testNet = os.system("ping -c 1 -W 2000 " + Mqtt_Broker_IP)
-        if (testNet == 0):
-            consoleInsertText("Broker OK" + '\n')
-            try:
-                Mqqt_client.username_pw_set( username=Mqtt_User, password=Mqtt_Password )
-                Mqqt_client.connect( host=Mqtt_Broker_IP, port=Mqtt_Port, keepalive=KEEP_ALIVE )
-                Mqqt_client.subscribe( Mqtt_MowerName + "/COMMAND/#" )
-                #Mqqt_client.loop_start()
-                print("MQTT Connecting Please Wait " + '\n')
-                consoleInsertText("MQTT Connecting Please Wait " + '\n')
-                mymower.callback_id=0
-                mymower.mqtt_message_id=0
-        
-            except:
-                Mqqt_client.connected_flag=False
-                print("MQTT connection failed" + '\n')
-                consoleInsertText("MQTT connection failed" + '\n')
-                #Mqqt_client.loop_stop()    #Stop loop
-                mymower.callback_id=0
-                mymower.mqtt_message_id=0
-            
-        else:
-            
-            consoleInsertText("BROKER NOT CONNECTED" + '\n')
-            
-
-    def sendMqtt(var_topic,var_payload) :        
-        if (Mqqt_client.connected_flag):
-            r=Mqqt_client.publish(topic=var_topic,payload=var_payload,qos=0, retain=False)
-            #mymower.mqtt_message_id=int(r[1])
-            if (Mqtt_ShowDebug):
-                consoleInsertText("MQTT send message " + var_topic + " " + var_payload + '\n')   
-                         
-
-        else:
-            if (Mqtt_ShowDebug):
-                consoleInsertText("MQTT not connected" + '\n')
-            pass
-            #consoleInsertText("MQTT not Connected fail to send " + str(mymower.mqtt_message_id) + " " + var_topic + " " + var_payload + '\n')   
-
-#END ADDon For MQTT
-            
-
-
-
 
 
 if myOS == "Linux":
@@ -290,24 +152,7 @@ class streamVideo_class(object):
 myStreamVideo=streamVideo_class()
 
 
-#################################### GPS MANAGEMENT ###############################################
 
-class gpsRecord_class(object):
-    """class use to start and stop the gps Record use only if the GPS is connected to the Raspberry"""
-    def __init__(self):
-        self.gpsRecord = None
-
-    def start(self):
-        self.stop()
-        self.gpsRecord=subprocess.Popen(["/home/pi/Documents/PiArdumower/gpsrecord.py","shell=True","stdout=subprocess.PIPE"])
-        
-    def stop(self):
-        if self.gpsRecord:
-            self.gpsRecord.kill()
-            self.gpsRecord.wait()
-            self.gpsRecord = None
-            
-mygpsRecord=gpsRecord_class()
 
 #################################### KST PLOT MANAGEMENT ###############################################
     
@@ -335,7 +180,7 @@ class PlotterKst_class(object):
 
 
 direction_list=['LEFT','RIGHT']
-days_list=['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY']
+days_list=['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY']
 page_list=['MAIN','AUTO','MANUAL','SETTING','CONSOLE','TEST','PLOT','TIMER','VIDEO','GPS','MAPS']
 
 
@@ -397,7 +242,13 @@ tk_loopsPerSecond=tk.DoubleVar()
 tk_areaToGo=tk.IntVar()
 tk_areaToGo.set(1)
 tk_ResumeMowing=tk.IntVar()
+tk_HouseView=tk.IntVar()
 tk_GpsSolution=tk.StringVar()
+tk_gpsnumSV=tk.StringVar()
+tk_mowPointIdx=tk.StringVar()
+tk_labelStopIdx=tk.IntVar()
+tk_labelStartIdx=tk.IntVar()
+tk_AutoInfoMap=tk.StringVar()
 
 
 """variable use into refreh plot"""
@@ -467,21 +318,7 @@ class mower:
         mower.chgVoltage=0.00
         mower.batSense=0.00
 
-        mower.statex=0
-        mower.statey=0
-        mower.stateDelta=0
-        mower.gpsSolution=0
-        mower.stateSensor=0
-        mower.targetPointx=0
-        mower.targetPointy=0
-        mower.gpsAccuracy=0
-        mower.gpsnumSV=0
-        mower.gpsnumSVdgps=0
-        mower.mapCRC=0 #sum of point coordonnees to be sure map is not false
-        mower.plotMapCRC=0 #when import a map check if it's egal to mapcrc,the one send each second
-        mower.lateralerror=0
-
-
+        
 
 
         
@@ -549,19 +386,64 @@ class mower:
         mower.objectDetectedID=0
         mower.userOut2=False
         mower.userOut3=False
-        
         mower.visionScore=0
 
+        self.House="00"
+        
         self.mowPointsIdx=0
+        self.startMowPointIdx=0
+        self.stopMowPointIdx=99999
+
+        self.statex=0.00
+        self.statey=0.00
+        self.laststatex=0.00
+        self.laststatey=0.00
+        self.stateDelta=0
+        self.gpsSolution=0
+        self.opNames="Idle"
+        self.stateSensor=0
+        self.targetPointx=0.00
+        self.targetPointy=0.00
+        self.lasttargetPointx=0.00
+        self.lasttargetPointy=0.00
         
-        self.map=[0]*10
-        
+        self.gpsAccuracy=0
+        self.gpsnumSV=0
+        self.gpsnumSVdgps=0
+        self.mapCRC=0 #sum of point coordonnees to be sure map is not false
+        self.plotMapCRC=0 #when import a map check if it's egal to mapcrc,the one send each second
+        self.lateralerror=0
+
+        self.perimeterPointsCount=0
+        self.exclusionPointsCount=0
+        self.dockPointsCount=0
+        self.mowPointsCount=0
+        self.freePointsCount=0
+        self.nbTotalExclusion=0
+        self.fileMapCRC=0
+
+        self.startPiArduTime=time.time()
+        self.map=[0]*30  #need bigger ??
         self.mapSelected = 0
         self.nbTotalExclusion=3
+        self.ActiveMapX = []
+        self.ActiveMapY = []
+        self.polygon = [None]*10
+        self.mapNrList = []
+        self.perimeter=np.zeros([],[])
+        self.dockPts=np.zeros([],[])
+        self.mowPts=np.zeros([],[])
+        self.isSendindMap=False
+        self.mapCrcRoundingRange=50 #map crc is not exactly the same between pi and mower 
+        self.full_house=0
+        self.actualMowingArea=0
+        self.totalMowingArea=0
+        
         
         
     
 mymower=mower()
+mymower.full_house=0
 myRobot=robot()
 myDate=datetime()
 cpu = CPUTemperature()
@@ -580,7 +462,8 @@ def consoleInsertText(texte):
 #################################### MAIN LOOP ###############################################
 
 def checkSerial():  #the main loop is here
-    
+##    if (mymower.isSendindMap) :
+##        return
     try:
         global DueConnectedOnPi
         if (DueConnectedOnPi and Due_Serial.inWaiting() != 0) :
@@ -658,115 +541,110 @@ def checkSerial():  #the main loop is here
             buttonBlade_stop_click()
             #print("roundClick:")
         
-    if useDebugConsole:
-        txtRecu.delete('5000.0',tk.END) #keep only  lines
-        txtSend.delete('5000.0',tk.END) #keep only  lines
-    txtConsoleRecu.delete('2500.0',tk.END) #keep only  lines
+    
    
     
-    if (useMqtt):
-        start1=time.time()
-        Mqqt_client.loop(0.05)
-        duration=time.time()-start1
-        if duration > 0.06 :
-            consoleInsertText("MQTT take more than 60 ms in execution" + '\n')
-        if (Mqqt_client.connected_flag):            
-            if (time.time() > mymower.timeToSendMqttIdle):
-                sendMqtt(Mqtt_MowerName + "/Idle",str(mymower.loopsPerSecond))
-                mymower.timeToSendMqttIdle=time.time()+Mqtt_IdleFreqency
-                
-        else:
-            
-            if (time.time() > mymower.timeToReconnectMqtt):
-                consoleInsertText("MQTT not connected retry each 2 minutes" + '\n')
-                Mqqt_Connection()
-                mymower.timeToReconnectMqtt=time.time()+120
-                
-    #vision detect something
-    if (mymower.visionDetect==True):
-        
-        search_object=mymower.objectDetectedID
-        areaThreshold=100
-        scoreThreshold=0
-        
-        for i in range(0,len(vision_list)):
-            
-            if (str(vision_list[i][1])== str(search_object)):
-                areaThreshold=int(vision_list[i][3])
-                scoreThreshold=int(vision_list[i][2])
-                #print(vision_list[i])
-                break
-        if(scoreThreshold==0):
-            consoleInsertText("Can't find object ID into setting vision list ID : " + str(search_object) + '\n')
-        else:
-            consoleInsertText("Detected : " + str(vision_list[i][0]) + '\n')
-            consoleInsertText("Detected Score : " + str(int(mymower.visionScore)) + " Treshold setting : " + str(scoreThreshold) + '\n')
-            consoleInsertText("Detected Area : " + str(int(mymower.surfaceDetected)) + " Treshold setting : " + str(areaThreshold) + '\n')
-        
-        #only stop if area and score area are OK    
-        if ((int(mymower.surfaceDetected) >= areaThreshold) and (int(mymower.visionScore) >= scoreThreshold)):
-            mymower.visionDetectAt = time.time()
-            mymower.userOut2=True
-            send_pfo_message('re1','1','2','3','4','5','6',)
-
-
-
-            
-            if(mymower.VisionRollRight == 1):
-                send_var_message('w','bumperRight','1','bumperLeft','0','0','0','0','0','0')
-            else:
-                send_var_message('w','bumperRight','0','bumperLeft','1','0','0','0','0','0')
-
-
-        else:
-            consoleInsertText("Object detected but size or score not enough for thresold" + '\n')
-            
-                
-        mymower.visionDetect=False
-        
-    if((mymower.userOut2==True) and (time.time()>=mymower.visionDetectAt+2)):
-            mymower.userOut2=False
-            send_pfo_message('re0','1','2','3','4','5','6',)
-    
-
-##    if (time.time() > mymower.oneMinuteTrigger):
-##        #consoleInsertText("CPU Température : " + str(cpu.temperature) + '\n')
-##        #start or stop the Raspberry fan
-##        if (cpu.temperature>=60.0):
-##            mymower.cpuFan=True
-##            send_pfo_message('rd1','1','2','3','4','5','6',)
+##    if (useMqtt):
+##        start1=time.time()
+##        Mqqt_client.loop(0.05)
+##        duration=time.time()-start1
+##        if duration > 0.06 :
+##            consoleInsertText("MQTT take more than 60 ms in execution" + '\n')
+##        if (Mqqt_client.connected_flag):            
+##            if (time.time() > mymower.timeToSendMqttIdle):
+##                sendMqtt(Mqtt_MowerName + "/Idle",str(mymower.loopsPerSecond))
+##                mymower.timeToSendMqttIdle=time.time()+Mqtt_IdleFreqency
+##                
 ##        else:
-##            if(mymower.cpuFan==True):
-##                mymower.cpuFan=False
-##                send_pfo_message('rd0','1','2','3','4','5','6',)
+##            
+##            if (time.time() > mymower.timeToReconnectMqtt):
+##                consoleInsertText("MQTT not connected retry each 2 minutes" + '\n')
+##                Mqqt_Connection()
+##                mymower.timeToReconnectMqtt=time.time()+120
+##                
+##    #vision detect something
+##    if (mymower.visionDetect==True):
+##        
+##        search_object=mymower.objectDetectedID
+##        areaThreshold=100
+##        scoreThreshold=0
+##        
+##        for i in range(0,len(vision_list)):
+##            
+##            if (str(vision_list[i][1])== str(search_object)):
+##                areaThreshold=int(vision_list[i][3])
+##                scoreThreshold=int(vision_list[i][2])
+##                #print(vision_list[i])
+##                break
+##        if(scoreThreshold==0):
+##            consoleInsertText("Can't find object ID into setting vision list ID : " + str(search_object) + '\n')
+##        else:
+##            consoleInsertText("Detected : " + str(vision_list[i][0]) + '\n')
+##            consoleInsertText("Detected Score : " + str(int(mymower.visionScore)) + " Treshold setting : " + str(scoreThreshold) + '\n')
+##            consoleInsertText("Detected Area : " + str(int(mymower.surfaceDetected)) + " Treshold setting : " + str(areaThreshold) + '\n')
+##        
+##        #only stop if area and score area are OK    
+##        if ((int(mymower.surfaceDetected) >= areaThreshold) and (int(mymower.visionScore) >= scoreThreshold)):
+##            mymower.visionDetectAt = time.time()
+##            mymower.userOut2=True
+##            send_pfo_message('re1','1','2','3','4','5','6',)
+##            
+##            if(mymower.VisionRollRight == 1):
+##                send_var_message('w','bumperRight','1','bumperLeft','0','0','0','0','0','0')
+##            else:
+##                send_var_message('w','bumperRight','0','bumperLeft','1','0','0','0','0','0')
 ##
-##        if (mymower.visionRunning==True) and (myRobot.statusNames[mymower.status]=="IN_STATION"):
-##            consoleInsertText("Station detected vision is not needed" + '\n')
-##            BtnVisionStop_click()
-##  
-##            
-##            
-##        mymower.oneMinuteTrigger=time.time()+60
-        
-##    if (time.time() > mymower.FiveSecondTrigger):
-##        tk_PiTemp.set(int(cpu.temperature))
-##        #start or stop the Raspberry fan
-##        message="AT+S"
-##        message=str(message)
-##        message=message + '\r'
-##        send_serial_message(message)           
-##            
-##        mymower.FiveSecondTrigger=time.time()+5
 ##
+##        else:
+##            consoleInsertText("Object detected but size or score not enough for thresold" + '\n')
+##            
+##                
+##        mymower.visionDetect=False
+##        
+##    if((mymower.userOut2==True) and (time.time()>=mymower.visionDetectAt+2)):
+##            mymower.userOut2=False
+##            send_pfo_message('re0','1','2','3','4','5','6',)
 
-    if (time.time() > mymower.OneSecondTrigger):
-        tk_PiTemp.set(int(cpu.temperature))
+    #one minute ticker
+    if (time.time() > mymower.oneMinuteTrigger):
+        #clean the console page
+        
+        txtRecu.delete('2000.0',tk.END) #keep only  lines
+        txtSend.delete('2000.0',tk.END) #keep only  lines
+        txtConsoleRecu.delete('2500.0',tk.END) #keep only  lines
+        
+        #consoleInsertText("PI Température : " + str(cpu.temperature) + '\n')
         #start or stop the Raspberry fan
+        if (cpu.temperature>=65.0):
+            mymower.cpuFan=True
+            ButtonFanStart_click()
+        else:
+            if(mymower.cpuFan==True):
+                mymower.cpuFan=False
+                ButtonFanStop_click()
+
+        if (mymower.visionRunning==True) and (myRobot.statusNames[mymower.status]=="IN_STATION"):
+            consoleInsertText("Station detected vision is not needed" + '\n')
+            BtnVisionStop_click()
+        mymower.oneMinuteTrigger=time.time()+60
+
+    #five seconde ticker   
+    if (time.time() > mymower.FiveSecondTrigger):
+        tk_PiTemp.set(int(cpu.temperature))
+        #initialisation of auto page
+##        if ((time.time()-mymower.startPiArduTime) < 9):
+##            ButtonAuto_click()                       
+        mymower.FiveSecondTrigger=time.time()+5
+
+    #one seconde ticker
+    if (time.time() > mymower.OneSecondTrigger):
+                  
+        tk_PiTemp.set(int(cpu.temperature))
+        #refresh pi data from mcu
         message="AT+S"
         message=str(message)
         message=message + '\r'
-        send_serial_message(message)           
-            
+        send_serial_message(message)              
         mymower.OneSecondTrigger=time.time()+1
     
     fen1.after(10,checkSerial)  # here is the main loop each 10ms
@@ -794,20 +672,26 @@ def checkSerial():  #the main loop is here
 
 
 
+def updateAutoPage():
+    
+    
+    if (mymower.targetPointx != mymower.lasttargetPointx):
+        targetpos1=[mymower.statex,mymower.targetPointx]
+        targetpos2=[mymower.statey,mymower.targetPointy]
+        mymower.lasttargetPointx=mymower.targetPointx
+        mymower.lasttargetPointy=mymower.targetPointy
+        
+        axLiveMap.plot(targetpos1,targetpos2,color='y',linewidth=1)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+    
+    mowerpos1=[mymower.laststatex,mymower.statex]
+    mowerpos2=[mymower.laststatey,mymower.statey]
+   
+    axLiveMap.plot(mowerpos1,mowerpos2,color='g',linewidth=2)
+    #axLiveMap.scatter(mymower.statex,mymower.statey, color='g', s=10)
+    axLiveMap.autoscale(False)
+    canvasLiveMap.draw()
+    
 
 
     
@@ -816,58 +700,86 @@ def decode_AT_message(message):  #decode sunray console message
             know_message=False
             if useDebugConsole:
                 txtRecu.insert('1.0', str(message)+ '\n')
+            if message[:2] =='W,':
+                know_message=True
+                print(str(message))
+                consoleInsertText(str(message) + '\n')
+                mymower.isSendindMap=False
+                
+
+                
             if message[:2] =='S,': # message statistique 'AT+S'
                 know_message=True
                 list_recu=(str(message).split(','))
                 
                 mymower.batteryVoltage=list_recu[1]
                 tk_batteryVoltage.set(mymower.batteryVoltage)
-
-                mymower.statex=list_recu[2]
-                GpsInfoline1.set("StateX : " + mymower.statex )
-                mymower.statey=list_recu[3]
-                GpsInfoline2.set("StateY : " + mymower.statey )
+                mymower.laststatex=mymower.statex
+                mymower.statex=float(list_recu[2])
+                GpsInfoline1.set("StateX : " + str(mymower.statex))
+                mymower.laststatey=mymower.statey
+                mymower.statey=float(list_recu[3])
+                GpsInfoline2.set("StateY : " + str(mymower.statey))
                 mymower.stateDelta=list_recu[4]
+                
                 GpsInfoline3.set("stateDelta : " + mymower.stateDelta )
                 mymower.gpsSolution=list_recu[5]
                 GpsInfoline4.set("gpsSolution : " + mymower.gpsSolution )
                
-                tk_GpsSolution.set(myRobot.gpsSolution[int(list_recu[5])])
+                tk_GpsSolution.set (myRobot.gpsSolution[int(list_recu[5])])
+                timeNow=time.strftime('%H:%M:%S',time.localtime())
 
-                
-                tk_MainStatusLine.set(myRobot.opNames[int(list_recu[6])])
-
+                tk_MainStatusLine.set(timeNow + " " + myRobot.opNames[int(list_recu[6])])
+                mymower.opNames=str(myRobot.opNames[int(list_recu[6])])
                 mymower.mowPointsIdx=int(list_recu[7])
-                tk_ImuYaw.set(mymower.mowPointsIdx)
-
+                tk_mowPointIdx.set(str(mymower.mowPointsIdx) + "/" + str(mymower.mowPointsCount))
+                if(mymower.mowPointsIdx >= mymower.stopMowPointIdx):
+                    button_home_click()
+                    
                 #mymower.inc=list_recu[8] need to check what is it
 
                 mymower.stateSensor=list_recu[9]
                 GpsInfoline5.set("stateSensor : " + mymower.stateSensor )
-                mymower.targetPointx=list_recu[10]
-                GpsInfoline6.set("targetPointx : " + mymower.targetPointx )
-                mymower.targetPointy=list_recu[11]
-                GpsInfoline7.set("targetPointy : " + mymower.targetPointy )
+                mymower.targetPointx=float(list_recu[10])
+                GpsInfoline6.set("targetPointx : " + str(mymower.targetPointx))
+                mymower.targetPointy=float(list_recu[11])
+                GpsInfoline7.set("targetPointy : " + str(mymower.targetPointy) )
                 mymower.gpsAccuracy=list_recu[12]
                 GpsInfoline8.set("gpsAccuracy : " + mymower.gpsAccuracy )
                 mymower.gpsnumSV=list_recu[13]
                 
-
                 mymower.batSense=list_recu[14]
                 tk_batSense.set(mymower.batSense)
                 
                 mymower.gpsnumSVdgps=list_recu[15]
 
-                GpsInfoline9.set("gpsnumSV : " + mymower.gpsnumSV + "/" + mymower.gpsnumSVdgps)
-                
-                mymower.mapCRC=list_recu[16]
-                GpsInfoline11.set("MapCRC : " + mymower.mapCRC )
+                GpsInfoline9.set("gpsnumSV : " + mymower.gpsnumSVdgps+ "/" + mymower.gpsnumSV)
+                tk_gpsnumSV.set (mymower.gpsnumSVdgps + "/" + mymower.gpsnumSV)
+               
+                mymower.mapCRC=int(list_recu[16])
+                GpsInfoline11.set("MapCRC : " + str(mymower.mapCRC ))
                 
                 mymower.lateralerror=list_recu[17]
+                
                 GpsInfoline10.set("lateralerror : " + mymower.lateralerror )
 
-                mymower.loopsPerSecond=int(list_recu[18])
-                tk_loopsPerSecond.set(mymower.loopsPerSecond)
+
+                if ((mymower.focusOnPage==1) and ((mymower.opNames == "MOW") or (mymower.opNames == "Go TO DOCK"))):
+
+                    
+                    #mymower.ActiveMapX.append(mymower.statex)
+                    #mymower.ActiveMapY.append(mymower.statey)
+                    #if mymower.OneSecondTrigger % 2 == 0 : #only each 2 seconde
+                    updateAutoPage()
+                    axLiveMap.set_aspect('equal','box')
+                                
+                
+##                if (myRobot.opNames[int(list_recu[6])] == "MOW"):
+##                    f=open(cwd + "/plot/PlotPos.txt",'a+')
+##                    f.write("{};{}\n".format(float(mymower.statex) , float(mymower.statey)))
+##                    f.close()
+               
+                
 
             if message[:2] =='Y3': # message power off
                 know_message=True
@@ -921,31 +833,75 @@ def decode_AT_message(message):  #decode sunray console message
                 #consoleInsertText(str(list_recu) + '\n')
                 mymower.nbTotalExclusion=int(list_recu[1])
                 maindata=np.array([mymower.perimeterPointsCount,mymower.exclusionPointsCount,mymower.dockPointsCount,mymower.mowPointsCount,mymower.freePointsCount,mymower.nbTotalExclusion,mymower.mapCRC])
-                
-                fileName=cwd + "/maps/MAIN"+str(mymower.mapSelected)
+
+                fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/MAIN"
+                output_file = Path(fileName)
+                output_file.parent.mkdir(exist_ok=True, parents=True)
                 np.save(fileName, maindata, allow_pickle=True, fix_imports=True)
-        
-                
-                message="AT+RP"
-                message=str(message)
-                message=message + '\r'
-                send_serial_message(message)
 
 
+                #update the main CRC datalist according to map nr
+                fileName=cwd + "/crcMapList.npy"
+                if (os.path.exists(fileName)):
+                    crcMapList=np.load(fileName)
+                    print("/crcMapList.npy")
+                    print(crcMapList)
+                    find_row=np.where(crcMapList[:,1] == mymower.mapCRC)
+                    result=crcMapList[find_row]
+                    
+                    if (result.size != 0):
+                                                              
+                        if (result[0,1]==mymower.mapCRC):
+                            messagebox.showwarning('warning',"This map already exist ,it's map : " + str(result[0,0]))
+                            MapsPage.select(result[0,0])
+                            mymower.mapSelected = int(MapsPage.index("current"))
+                        else:
+                            messagebox.showwarning('warning',"Error while loading crcMapList")
+                           
+                    else:
+                        #add the new map
+                        newrow=[mymower.mapSelected,mymower.mapCRC]
+                        crcMapList = np.vstack([crcMapList, newrow])
+                        np.save(fileName, crcMapList, allow_pickle=True, fix_imports=True)
+                        print(crcMapList)
+                        message="AT+RP"
+                        message=str(message)
+                        message=message + '\r'
+                        send_serial_message(message)
+                else:
+                    #create the file for the first time
+                    crcMapList=np.array([[mymower.mapSelected,mymower.mapCRC]])
+                    np.save(fileName, crcMapList, allow_pickle=True, fix_imports=True)
+                    message="AT+RP"
+                    message=str(message)
+                    message=message + '\r'
+                    send_serial_message(message)
                 
-                
+                       
             if message[:2] =='RP': # message perimeter list point
+                print(message)
+                mymower.actualMowingArea=0
                 know_message=True
                 pointCount=0
                 list_recu=(str(message).split(','))
                 list_recu.pop(0)  #remove first
                 list_recu.pop(len(list_recu)-1) #remove last
                 pointCount=int(len(list_recu)/2)
-                mymower.map[mymower.mapSelected] = np.array(list_recu).reshape(pointCount,2)
-
-                fileName=cwd + "/maps/PERIMETER"+str(mymower.mapSelected)
+                dataArray = np.array(list_recu).reshape(pointCount,2)
+                mymower.map[mymower.mapSelected] = dataArray.astype(float) # to float data
+                fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/PERIMETER"
+                output_file = Path(fileName)
+                output_file.parent.mkdir(exist_ok=True, parents=True)
                 np.save(fileName, mymower.map[mymower.mapSelected], allow_pickle=True, fix_imports=True)
                 consoleInsertText('Perimeter map total point : '+ str(pointCount)+ '\n')
+
+                perimeterArray=mymower.map[mymower.mapSelected]
+                polygon1 = Polygon(np.squeeze(perimeterArray))
+                mymower.actualMowingArea=int(polygon1.area)       
+
+
                 message="AT+RM"
                 message=str(message)
                 message=message + '\r'
@@ -958,8 +914,14 @@ def decode_AT_message(message):  #decode sunray console message
                 list_recu.pop(0)  #remove first
                 list_recu.pop(len(list_recu)-1) #remove last
                 pointCount=int(len(list_recu)/2)
-                mymower.map[mymower.mapSelected] = np.array(list_recu).reshape(pointCount,2)
-                fileName=cwd + "/maps/MOW"+str(mymower.mapSelected)
+                dataArray = np.array(list_recu).reshape(pointCount,2)
+                mymower.map[mymower.mapSelected] = dataArray.astype(float) # to float data
+               
+
+                fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/MOW"
+                output_file = Path(fileName)
+                output_file.parent.mkdir(exist_ok=True, parents=True)
                 np.save(fileName, mymower.map[mymower.mapSelected], allow_pickle=True, fix_imports=True)
                 consoleInsertText('Mowing map point : ' + str(pointCount) + '\n')
                 message="AT+RD"
@@ -974,8 +936,12 @@ def decode_AT_message(message):  #decode sunray console message
                 list_recu.pop(0)  #remove first
                 list_recu.pop(len(list_recu)-1) #remove last
                 pointCount=int(len(list_recu)/2)
-                mymower.map[mymower.mapSelected] = np.array(list_recu).reshape(pointCount,2)
-                fileName=cwd + "/maps/DOCKING"+str(mymower.mapSelected)
+                dataArray = np.array(list_recu).reshape(pointCount,2)
+                mymower.map[mymower.mapSelected] = dataArray.astype(float) # to float data
+                fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/DOCK"
+                output_file = Path(fileName)
+                output_file.parent.mkdir(exist_ok=True, parents=True)
                 np.save(fileName, mymower.map[mymower.mapSelected], allow_pickle=True, fix_imports=True)
                 consoleInsertText('Docking point : '+ str(pointCount) + '\n')
                                
@@ -992,8 +958,12 @@ def decode_AT_message(message):  #decode sunray console message
                 list_recu.pop(0)  #remove first
                 list_recu.pop(len(list_recu)-1) #remove last
                 pointCount=int(len(list_recu)/2)
-                mymower.map[mymower.mapSelected] = np.array(list_recu).reshape(pointCount,2)
-                fileName=cwd + "/maps/FREE"+str(mymower.mapSelected)
+                dataArray = np.array(list_recu).reshape(pointCount,2)
+                mymower.map[mymower.mapSelected] = dataArray.astype(float) # to float data
+                fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/FREE"
+                output_file = Path(fileName)
+                output_file.parent.mkdir(exist_ok=True, parents=True)
                 np.save(fileName, mymower.map[mymower.mapSelected], allow_pickle=True, fix_imports=True)
                 consoleInsertText('Free point : '+ str(pointCount) + '\n')
                 mymower.exclusionNr=0
@@ -1002,6 +972,9 @@ def decode_AT_message(message):  #decode sunray console message
                 message=str(message)
                 message=message + '\r'
                 send_serial_message(message)
+
+                print("   ")
+                print(message)
                 
                 
 
@@ -1015,36 +988,39 @@ def decode_AT_message(message):  #decode sunray console message
                 list_recu.pop(0)  #remove first
                 list_recu.pop(len(list_recu)-1) #remove last
                 pointCount=int(len(list_recu)/2)
-                mymower.map[mymower.mapSelected] = np.array(list_recu).reshape(pointCount,2)
-
-                fileName=cwd + "/maps/EXCLUSION"+(f"{mymower.mapSelected:02d}")+(f"{mymower.exclusionNr:02d}")
-
+                dataArray = np.array(list_recu).reshape(pointCount,2)
+                mymower.map[mymower.mapSelected] = dataArray.astype(float) # to float data
+               
+                fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/EXCLUSION"+"{0:0>2}".format(mymower.exclusionNr)
+                output_file = Path(fileName)
+                output_file.parent.mkdir(exist_ok=True, parents=True)
  
-
                 np.save(fileName, mymower.map[mymower.mapSelected], allow_pickle=True, fix_imports=True)
-                consoleInsertText('Exclusion point : ' + str(pointCount)+ '\n')
+                consoleInsertText('Add Exclusion nr : ' + str(mymower.exclusionNr) + ' point : ' + str(pointCount)+ '\n')
+                print(mymower.exclusionNr, "/", mymower.nbTotalExclusion)
+                mymower.exclusionNr=mymower.exclusionNr+1
                 
-                if (mymower.exclusionNr<=mymower.nbTotalExclusion):
+                if (mymower.exclusionNr<mymower.nbTotalExclusion):
                     consoleInsertText('new exclusion : '+ str(mymower.exclusionNr)+ '\n')
-                    mymower.exclusionNr=mymower.exclusionNr+1
+                    
                     message="AT+RX," +str(mymower.exclusionNr) + ","
                     message=str(message)
                     message=message + '\r'
                     send_serial_message(message)
                 else:
-                    consoleInsertText('Import OK ' + '\n')
-                    consoleInsertText('Map CRC = ' + str(mymower.plotMapCRC) + '\n')
-                    
-                    onTabChange(0)
-
+                    consoleInsertText('Import Finish ' + '\n')
+                    consoleInsertText('mapCRC = ' + str(mymower.mapCRC) + '\n')
+                    #canvas[mymower.mapSelected].draw
+                    onTabChange(mymower.mapSelected)
                     
 
 
             if message[:2] =='X,': # message exclusion list point
                 know_message=True
-                print("message  ")
+                print("message exclusion list point  ")
                 print(message)
-                consoleInsertText('message ' + '\n')
+                consoleInsertText('message exclusion list point ' + '\n')
                 consoleInsertText(str(message) + '\n')
 
                                               
@@ -1060,8 +1036,8 @@ def decode_AT_message(message):  #decode sunray console message
 
             if message[:4] == 'CON:':
                 know_message=True
-            if message[:2] == '0:':#a rectifier uniquement pour test
-                know_message=True
+##            if message[:2] == '0:':#a rectifier uniquement pour test
+##                know_message=True
 
             if not (know_message):
                 consoleInsertText(str(message)+ '\n')
@@ -1076,586 +1052,7 @@ def decode_AT_message(message):  #decode sunray console message
                              
 
 
-def decode_message(message):  #decode nmea message
-    #KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow()
-            if useDebugConsole:
-                txtRecu.insert('1.0', str(message)+ '\n')
-            if message.sentence_type =='TOW': #message from towell
-                mymower.laserSensor1=message.sensor1
-                mymower.laserSensor2=message.sensor2
-                mymower.laserSensor3=message.sensor3
-                mymower.laserSensor4=message.sensor4
-                mymower.laserSensor5=message.sensor5
-                mymower.laserSensor6=message.sensor6
-                if ((int(mymower.laserSensor1) <= 800) or (int(mymower.laserSensor2) <= 800) or (int(mymower.laserSensor3) <= 800)):
-                    
-                    consoleInsertText('Towel detect something :'+ '\n')
-                    consoleInsertText(str(message))
-                    
-                 
-                    #send_var_message('w','motorSpeedMaxPwm',''+str(int(myRobot.motorSpeedMaxPwm)/2)+'','0','0','0','0','0','0','0')
-                
-                if (int(message.rain) == 1):
-                    mymower.rainDetect=True
-                    consoleInsertText('RAIN DETECTED TIME TO GO TO STATION'+ '\n')
-                    if(myRobot.statusNames[mymower.status] == "NORMAL_MOWING"):
-                        button_home_click()
-                    
-                else:
-                    mymower.rainDetect=False
-     
-            if message.sentence_type =='CMD': #receive a command from the DUE (need to do something
-                if message.actuatorname == 'RestartPi':
-                    consoleInsertText('TIME TO RESTART'+ '\n')
-                    mymower.focusOnPage=4
-                    ConsolePage.tkraise()
-                    if (mymower.visionRunning):
-                        mymower.visionRunning=False
-                    if(useMqtt):
-                        consoleInsertText('Close Mqtt Connection'+ '\n')
-                        Mqqt_DisConnection()                        
-                    consoleInsertText('PI Restart into 5 Seconds'+ '\n')
-                    consoleInsertText('Start to save all Console Data'+ '\n')
-                    ButtonSaveReceived_click()  #save the console txt
-                    time.sleep(5)
-                    subprocess.Popen('/home/pi/Documents/PiArdumower/Restart.py')
-                    fen1.destroy()
-                    time.sleep(1)
-                    sys.exit("Restart ordered by Arduino Due")
-                if message.actuatorname == 'PowerOffPi':
-                    mymower.focusOnPage=4
-                    ConsolePage.tkraise()
-                    if (mymower.visionRunning):
-                        mymower.visionRunning=False
-                    if(useMqtt):
-                        consoleInsertText('Close Mqtt Connection'+ '\n')
-                        Mqqt_DisConnection() 
-                    consoleInsertText('Start to save all Console Data'+ '\n')
-                    ButtonSaveReceived_click()  #save the console txt
-                    consoleInsertText('All Console Data are saved'+ '\n')
-                    consoleInsertText('PI start Shutdown'+ '\n')
-                    time.sleep(5)
-                    subprocess.Popen('/home/pi/Documents/PiArdumower/PowerOff.py')
-                    fen1.destroy()
-                    time.sleep(1)
-                    sys.exit("PowerOFF ordered by Arduino Due")
-                    
-                    
-            if message.sentence_type =='RMC': #it's the GPS data message
-                global firstFixFlag
-                global firstFixDate
-                if message.status == "A": # If the sentence shows that there's a fix, then we can log the line
-                        txtGpsRecu.insert('1.0', str(message)+ '\n')
-                        decimalLatitude=degrees_to_decimal(message.lat,message.lat_dir)
-                        decimalLongitude=degrees_to_decimal(message.lon,message.lon_dir)
-                        if firstFixFlag is False: # If we haven't found a fix before, then set the filename prefix with GPS date & time.
-                            firstFixDate = message.datestamp + "-" + message.timestamp
-                            firstFixFlag = True
-                
-                        else: # write the data to a simple log file and then the raw data as well:
-                            with open(cwd+"/gpsdata/" + firstFixDate +".txt", "a") as myfile:
-                                myfile.write(message.datestamp + "," + message.timestamp + "," + str(decimalLatitude) + "," + str(decimalLongitude) +"\n")
-                        
-                            with open(cwd+"/gpsdata/Recu" + firstFixDate +".ubx", "a") as myfile1:
-                                myfile1.write(mymower.dueSerialReceived +"\n")
 
-
-                 
-        
-
-            if message.sentence_type =='BYL': #to refresh the ByLane setting page 
-                mymower.millis=int(message.millis)
-                mymower.rollDir=message.rollDir
-                mymower.laneInUse=message.laneInUse
-                mymower.YawActual=message.YawActual
-                mymower.YawCible=message.YawCible
-               
-                tk_millis.set(mymower.millis)
-                tk_rollDir.set(direction_list[int(mymower.rollDir)])
-                tk_laneInUse.set(mymower.laneInUse)
-                tk_YawActual.set(format(float(mymower.YawActual)*180/math.pi,'.1f'))
-                tk_YawCible.set(format(float(mymower.YawCible),'.1f'))
-
-            
-            if message.sentence_type =='INF': #to refresh the info page
-                mymower.millis=int(message.millis)
-                mymower.developerActive=message.developerActive
-                mymower.version=message.version
-                Infoline1.set("DUE Firmware : " + mymower.version + "           Pi version : " + PiVersion)
-                mymower.statsOverride=message.statsOverride
-                Infoline2.set("Developer Active : " + mymower.developerActive +" / statsOverride : " + str(mymower.statsOverride))
-                mymower.statsMowTimeMinutesTrip=message.statsMowTimeMinutesTrip
-                mymower.statsMowTimeHoursTotal=message.statsMowTimeHoursTotal
-                Infoline3.set("Mowing Duration Last Trip : " + str(mymower.statsMowTimeMinutesTrip) + " Minutes")
-                Infoline4.set ("Mowing Duration Total : " + str(mymower.statsMowTimeHoursTotal) + " Hours")
-             
-                mymower.statsBatteryChargingCounterTotal=message.statsBatteryChargingCounterTotal
-                mymower.statsBatteryChargingCapacityTrip=message.statsBatteryChargingCapacityTrip
-                mymower.statsBatteryChargingCapacityTotal=message.statsBatteryChargingCapacityTotal
-                mymower.statsBatteryChargingCapacityAverage=message.statsBatteryChargingCapacityAverage
-
-
-
-            if message.sentence_type =='MOT': #to refresh the plot page of motor wheel
-                global firstplotMotx
-                
-                mymower.millis=int(message.millis)
-                #time.localtime()
-                mymower.motorLeftPower=message.motorLeftPower
-                mymower.motorRightPower=message.motorRightPower
-                mymower.motorLeftPWMCurr=message.motorLeftPWMCurr
-                mymower.motorRightPWMCurr=message.motorRightPWMCurr
-                mymower.batteryVoltage=message.batteryVoltage
-                if firstplotMotx==0:
-                    firstplotMotx=int(mymower.millis)
-                tk_millis.set(mymower.millis)
-                tk_motorLeftPower.set(mymower.motorLeftPower)
-                tk_motorRightPower.set(mymower.motorRightPower)
-                tk_motorLeftPWMCurr.set(mymower.motorLeftPWMCurr)
-                tk_motorRightPWMCurr.set(mymower.motorRightPWMCurr)
-
-                f=open(cwd + "/plot/PlotMot.txt",'a+')
-                f.write("{};{};{};{};{}\n".format(int((int(mymower.millis)-firstplotMotx)/100),float(mymower.motorLeftPower) , float(mymower.motorRightPower),float(mymower.motorLeftPWMCurr) , float(mymower.motorRightPWMCurr)))
-                f.close()
-                
-            if message.sentence_type =='MOW': #to refresh the plot page of motor mow
-                global firstplotMowx
-                
-                mymower.millis=int(message.millis)
-                mymower.motorMowPower=message.motorMowPower
-                mymower.motorMowPWMCurr=message.motorMowPWMCurr
-                mymower.batteryVoltage=message.batteryVoltage
-                
-                if firstplotMowx==0:
-                    firstplotMowx=int(mymower.millis)
-                tk_millis.set(mymower.millis)
-                tk_motorMowPower.set(mymower.motorMowPower)
-                tk_motorMowPWMCurr.set(mymower.motorMowPWMCurr)
-                tk_batteryVoltage.set(mymower.batteryVoltage)
-
-                f=open(cwd + "/plot/PlotMow.txt",'a+')
-                f.write("{};{};{}\n".format(int((int(mymower.millis)-firstplotMowx)/100),float(mymower.motorMowPower) , float(mymower.motorMowPWMCurr)))
-                f.close()
-               
-                
-            if message.sentence_type =='BAT': #to refresh the plot page of battery
-                global firstplotBatx
-                
-                mymower.millis=int(message.millis)
-                mymower.chgVoltage=message.chgVoltage
-                mymower.chgSense=message.chgSense
-                mymower.batteryVoltage=message.batteryVoltage
-                
-                if firstplotBatx==0:
-                    firstplotBatx=int(mymower.millis)
-                tk_millis.set(mymower.millis)
-                tk_chgVoltage.set(mymower.chgVoltage)
-                tk_chgSense.set(mymower.chgSense)
-                tk_batteryVoltage.set(mymower.batteryVoltage)
-                
-                f=open(cwd + "/plot/PlotBat.txt",'a+')
-                f.write("{};{};{};{}\n".format(int((int(mymower.millis)-firstplotBatx)/100),float(mymower.chgVoltage) , float(mymower.chgSense), float(mymower.batteryVoltage)))
-                f.close()
-
-
-            if message.sentence_type =='PER': #to refresh the plot page of perimeter
-                global firstplotPerx
-                
-                mymower.millis=int(message.millis)
-                mymower.perimeterMag=message.perimeterMag
-                mymower.perimeterMagRight=message.perimeterMagRight
-                mymower.areaInMowing=int(message.areaInMowing)
-                                
-                if firstplotPerx==0:
-                    firstplotPerx=int(mymower.millis)
-                
-                tk_millis.set(mymower.millis)
-                tk_perimeterMag.set(mymower.perimeterMag)
-                tk_perimeterMagRight.set(mymower.perimeterMagRight)
-                
-                f=open(cwd + "/plot/PlotPeri.txt",'a+')
-                f.write("{};{};{}\n".format(int((int(mymower.millis)-firstplotPerx)/100),float(mymower.perimeterMag) , float(mymower.perimeterMagRight)))
-                f.close()
-
-            if message.sentence_type =='IMU': #to refresh the plot page of Imu
-                global firstplotImux
-                mymower.millis=int(message.millis)
-                mymower.gyroYaw=message.gyroYaw
-                mymower.compassYaw=message.compassYaw
-                
-                                
-                if firstplotImux==0:
-                    firstplotImux=int(mymower.millis)
-                
-                tk_millis.set(mymower.millis)
-                tk_gyroYaw.set(mymower.gyroYaw)
-                tk_compassYaw.set(mymower.compassYaw)
-                
-                
-                f=open(cwd + "/plot/PlotImu.txt",'a+')
-                f.write("{};{};{}\n".format(int((int(mymower.millis)-firstplotPerx)/100),mymower.gyroYaw , mymower.compassYaw))
-                f.close()
-                
-         
-            if message.sentence_type =='STU': # message for status info send on change only       
-                mymower.status=int(message.status)
-               
-                if(useMqtt and Mqqt_client.connected_flag):
-                   sendMqtt(Mqtt_MowerName + "/Status",str(myRobot.statusNames[mymower.status]))
-                         
-                if(myRobot.statusNames[mymower.status]=="TRACK_TO_START"):
-                    mymower.areaInMowing=int(message.val1)
-                    mymower.areaToGo=int(message.val2)
-                    tk_areaToGo.set(mymower.areaToGo)
-           
-                    
-
-            if message.sentence_type =='STA': #permanent each 500 ms message for state info
-               
-                mymower.millis=int(message.millis)
-                mymower.odox=message.odox
-                mymower.odoy=message.odoy
-                mymower.prevYaw=message.prevYaw
-                
-                if(useMqtt and Mqqt_client.connected_flag):
-                    if (mymower.state!=int(message.state)):
-                        mymower.state=int(message.state)    
-                        sendMqtt(Mqtt_MowerName + "/State",str(myRobot.stateNames[mymower.state]))    
-                    if (mymower.batteryVoltage!=float(message.batteryVoltage)):
-                        mymower.batteryVoltage=float(message.batteryVoltage)
-                        ecart=mymower.lastMqttBatteryValue-float(message.batteryVoltage)
-                        #only send Mqtt if 0.2 volt dif to avoid send too fast
-                        if(abs(ecart)>0.2):
-                            sendMqtt(Mqtt_MowerName + "/Battery",message.batteryVoltage)
-                            mymower.lastMqttBatteryValue=float(message.batteryVoltage)
-                    if (mymower.Dht22Temp!=message.Dht22Temp):
-                        mymower.Dht22Temp=message.Dht22Temp
-                        sendMqtt(Mqtt_MowerName + "/Temp",str(mymower.Dht22Temp))      
-                else:
-                   mymower.batteryVoltage=float(message.batteryVoltage)
-                   mymower.Dht22Temp=message.Dht22Temp
-                   mymower.state=int(message.state)   
-                   
-                mymower.yaw=message.yaw
-                mymower.pitch=message.pitch
-                mymower.roll=message.roll
-                   
-                               
-                mymower.loopsPerSecond=message.loopsPerSecond
-                #//bber17
-                if AutoRecordBatCharging :
-                    if ((mymower.autoRecordBatChargeOn==False) & (myRobot.stateNames[mymower.state]=='CHARG')): #the mower is now on charge
-                        consoleInsertText("Start to record the Battery charging" + '\n')
-                        SldMainBatRefresh.set(10) #data flow 10 times each minute
-                        mymower.autoRecordBatChargeOn=True
-                        BtnBatPlotStartRec_click()
-                    if ((mymower.autoRecordBatChargeOn==True) & (myRobot.stateNames[mymower.state]=='STAT')): 
-                        consoleInsertText("Stop to record the Battery charging" + '\n')
-                        BtnBatPlotStopRec_click()
-                        mymower.autoRecordBatChargeOn=False
-                    
-                    
-                
-                
-   
-                tk_batteryVoltage.set(mymower.batteryVoltage)         
-                tk_ImuYaw.set(int(180*float(mymower.yaw)/math.pi))
-                tk_batSense.set(int(180*float(mymower.pitch)/math.pi))
-                tk_ImuRoll.set(int(180*float(mymower.roll)/math.pi))
-                #tk_PiTemp.set(mymower.Dht22Temp)
-                tk_loopsPerSecond.set(mymower.loopsPerSecond)
-               
-                tk_date_Now.set(time.strftime('%d/%m/%y %H:%M:%S',time.localtime()))
-                tk_time_Now.set(time.strftime('%H:%M:%S',time.localtime()))
-                #stop sender1 if we are into station
-                if ((mymower.sigAreaOff==False) and (myRobot.stateNames[mymower.state]=='STAT')):
-                    ButtonStopArea1_click()
-                    mymower.sigAreaOff=True
-                
-
-                #Start sender 1 when leaving station
-                if ((mymower.sigAreaOff) and (myRobot.stateNames[mymower.state]=='STREV')):
-                        ButtonStartArea1_click()
-
-                #start the sender of the area we use
-                if ((mymower.sigAreaOff) and (myRobot.stateNames[mymower.state]=='WAITSIG2')):
-                    if(time.time() >= mower.timeToStartAreaSignal):
-                        mower.timeToStartAreaSignal=time.time()+5  #try to communicate with sender each 5 secondes
-                        #ButtonWifiOn_click() #reset dns and acces point
-                       
-                        if (mymower.areaToGo==1):
-                            ButtonStartArea1_click()
-                        if (mymower.areaToGo==2):
-                            ButtonStopArea1_click()
-                            ButtonStartArea2_click()
-                        if (mymower.areaToGo==3):
-                            ButtonStopArea1_click()
-                            ButtonStartArea3_click()
-                        
-                        
-                tk_MainStatusLine.set(myRobot.statusNames[mymower.status] + "/" + myRobot.stateNames[mymower.state] )
-                
-
-
-            if message.sentence_type =='RET': #to fill the setting page All or name of the needed page
-               
-                if message.setting_page =='Time':
-                                 
-                    myDate.hour = message.val1
-                    myDate.minute = message.val2
-                    myDate.dayOfWeek = message.val3
-                    myDate.day = message.val4
-                    myDate.month = message.val5
-                    myDate.year = message.val6
-                    tk_date_hour.set(myDate.hour)
-                    tk_date_minute.set(myDate.minute)
-                    tk_date_dayOfWeek.set(myDate.dayOfWeek)
-                    tk_date_day.set(myDate.day)
-                    tk_date_month.set(myDate.month)
-                    tk_date_year.set(myDate.year)
-                    myDateFormatted= myDate.day+"/"+myDate.month+"/"+myDate.year+" "+myDate.hour+":"+myDate.minute
-                    consoleInsertText("Date Time from PCB1.3       : " + myDateFormatted + '\n')
-                    dateNow=time.strftime('%-d/%-m/%Y %-H:%-M',time.localtime())
-                    consoleInsertText("Date Time from Raspberry Pi : " + dateNow + '\n')
-                    if myDate.year != time.strftime('%Y',time.localtime()):
-                        consoleInsertText("PLEASE SET YEAR CORRECTLY"+ '\n')
-                    if myDate.month != time.strftime('%-m',time.localtime()):
-                        consoleInsertText("PLEASE SET MONTH CORRECTLY"+ '\n')
-                    if myDate.day != time.strftime('%-d',time.localtime()):
-                        consoleInsertText("PLEASE SET DAY CORRECTLY"+ '\n')
-                    if myDate.hour != time.strftime('%-H',time.localtime()):
-                        consoleInsertText("PLEASE SET HOUR CORRECTLY"+ '\n')
-                    if (abs(int(myDate.minute)-int(time.strftime('%-M',time.localtime()))) >=10):
-                        consoleInsertText("PLEASE SET MINUTE CORRECTLY"+ '\n')
-                   
-            
-                
-                            
-                     
-                if message.setting_page =='Timer':
-                    myRobot.Timeractive[int(message.pageNr)]=int(message.val1)
-                    myRobot.TimerstartTime_hour[int(message.pageNr)]=int(message.val2)
-                    myRobot.TimerstartTime_minute[int(message.pageNr)]=int(message.val3)
-                    myRobot.TimerstopTime_hour[int(message.pageNr)]=int(message.val4)
-                    myRobot.TimerstopTime_minute[int(message.pageNr)]=int(message.val5)
-                    myRobot.TimerstartDistance[int(message.pageNr)]=int(message.val6)
-                    myRobot.TimerstartMowPattern[int(message.pageNr)]=int(message.val7)
-                    myRobot.TimerstartNrLane[int(message.pageNr)]=int(message.val8)
-                    myRobot.TimerstartRollDir[int(message.pageNr)]=int(message.val9)
-                    myRobot.TimerstartLaneMaxlengh[int(message.pageNr)]=int(message.val10)
-                            
-                    tk_timerActive[int(message.pageNr)].set(myRobot.Timeractive[int(message.pageNr)])
-                    tk_timerStartTimehour[int(message.pageNr)].set(myRobot.TimerstartTime_hour[int(message.pageNr)])
-                    tk_timerStartTimeMinute[int(message.pageNr)].set(myRobot.TimerstartTime_minute[int(message.pageNr)])
-                    tk_timerStopTimehour[int(message.pageNr)].set(myRobot.TimerstopTime_hour[int(message.pageNr)])
-                    tk_timerStopTimeMinute[int(message.pageNr)].set(myRobot.TimerstopTime_minute[int(message.pageNr)])
-                    tk_timerStartDistance[int(message.pageNr)].set(myRobot.TimerstartDistance[int(message.pageNr)])
-                    tk_timerStartMowPattern[int(message.pageNr)].set(myRobot.TimerstartMowPattern[int(message.pageNr)])
-                    tk_timerStartNrLane[int(message.pageNr)].set(myRobot.TimerstartNrLane[int(message.pageNr)])
-                    tk_timerStartRollDir[int(message.pageNr)].set(myRobot.TimerstartRollDir[int(message.pageNr)])
-                    tk_timerStartLaneMaxlengh[int(message.pageNr)].set(myRobot.TimerstartLaneMaxlengh[int(message.pageNr)])
-                           
-                            
-                             
-                                
-                                            
-                #suite des timers tables
-                if message.setting_page =='Timer1':
-                    myRobot.TimerstartArea[int(message.pageNr)]=int(message.val1)
-                    myRobot.TimerdaysOfWeek[int(message.pageNr)]=int(message.val2)
-                    
-                    if int(message.pageNr)== 4:#refresh when receive the last page
-                        refreshTimerSettingPage()
-                            
-                if message.setting_page =='All':
-                    if message.pageNr =='1':
-                        myRobot.developerActive=message.val1
-                        myRobot.motorAccel=message.val2
-                        myRobot.motorSpeedMaxRpm=message.val3
-                        myRobot.motorSpeedMaxPwm=message.val4
-                        myRobot.motorPowerMax=message.val5
-                        myRobot.motorSenseRightScale=message.val6
-                        myRobot.motorSenseLeftScale=message.val7
-                        myRobot.motorRollDegMax=message.val8
-                        myRobot.motorRollDegMin=message.val9
-                        myRobot.DistPeriOutRev=message.val10
-                    if message.pageNr =='2':   
-                        myRobot.motorPowerIgnoreTime=message.val1
-                        myRobot.motorForwTimeMax=message.val2
-                        myRobot.motorMowSpeedMaxPwm=message.val3
-                        myRobot.motorMowPowerMax=message.val4
-                        myRobot.motorMowSpeedMinPwm=message.val5
-                        myRobot.motorMowSenseScale=message.val6
-                        myRobot.motorLeftPID_Kp=message.val7
-                        myRobot.motorLeftPID_Ki=message.val8
-                        myRobot.motorLeftPID_Kd=message.val9
-                        myRobot.motorMowPID_Kp=message.val10
-                    if message.pageNr =='3':  
-                        myRobot.motorMowPID_Ki=message.val1
-                        myRobot.motorMowPID_Kd=message.val2
-                        myRobot.motorBiDirSpeedRatio1=message.val3
-                        myRobot.motorBiDirSpeedRatio2=message.val4
-                        myRobot.motorLeftSwapDir=message.val5
-                        myRobot.motorRightSwapDir=message.val6
-                        myRobot.bumperUse=message.val7
-                        myRobot.sonarUse=message.val8
-                        myRobot.sonarCenterUse=message.val9
-                        myRobot.sonarLeftUse=message.val10
-                    if message.pageNr =='4': 
-                        myRobot.sonarRightUse=message.val1
-                        myRobot.sonarTriggerBelow=message.val2
-                        myRobot.perimeterUse=message.val3
-                        myRobot.perimeter_timedOutIfBelowSmag=message.val4
-                        myRobot.perimeterTriggerMinSmag=message.val5
-                        myRobot.perimeterOutRollTimeMax=message.val6
-                        myRobot.perimeterOutRollTimeMin=message.val7
-                        myRobot.perimeterOutRevTime=message.val8
-                        myRobot.perimeterTrackRollTime =message.val9
-                        myRobot.sonarLikeBumper=message.val10
-                    if message.pageNr =='5':     
-                        myRobot.perimeterPID_Kp=message.val1
-                        myRobot.perimeterPID_Ki=message.val2
-                        myRobot.perimeterPID_Kd=message.val3
-                        myRobot.perimeter_signalCodeNo=message.val4
-                        myRobot.perimeter_swapCoilPolarityLeft=message.val5
-                        myRobot.perimeter_timeOutSecIfNotInside=message.val6
-                        myRobot.trakBlockInnerWheel=message.val7
-                        myRobot.lawnSensorUse=message.val8
-                        myRobot.imuUse=message.val9
-                        myRobot.stopMotorDuringCalib=message.val10
-                    if message.pageNr =='6':     
-                        myRobot.imuDirPID_Kp=message.val1
-                        myRobot.imuDirPID_Ki=message.val2
-                        myRobot.imuDirPID_Kd=message.val3
-                        myRobot.imuRollPID_Kp=message.val4
-                        myRobot.imuRollPID_Ki=message.val5
-                        myRobot.imuRollPID_Kd=message.val6
-                        myRobot.remoteUse=message.val7
-                        myRobot.batMonitor=message.val8
-                        myRobot.batGoHomeIfBelow=message.val9
-                        myRobot.batSwitchOffIfBelow=message.val10
-                    if message.pageNr =='7':                       
-                        myRobot.batSwitchOffIfIdle=message.val1
-                        myRobot.batFactor=message.val2
-                        myRobot.batChgFactor=message.val3
-                        myRobot.chgSenseZero=message.val4
-                        myRobot.batSenseFactor=message.val5
-                        myRobot.batFullCurrent=message.val6
-                        myRobot.startChargingIfBelow=message.val7
-                        myRobot.stationRevDist=message.val8
-                        myRobot.stationRollAngle=message.val9
-                        myRobot.stationForwDist=message.val10
-                    if message.pageNr =='8':    
-                        myRobot.stationCheckDist=message.val1
-                        myRobot.odometryUse=message.val2
-                        myRobot.odometryTicksPerRevolution=message.val3
-                        myRobot.odometryWheelDiameter=message.val4
-                        myRobot.odometryWheelBaseCm=message.val5
-                        myRobot.autoResetActive=message.val6
-                        myRobot.CompassUse=message.val7
-                        myRobot.twoWayOdometrySensorUse=message.val8
-                        myRobot.buttonUse=message.val9
-                        myRobot.userSwitch1=message.val10
-                    if message.pageNr =='9':    
-                        myRobot.userSwitch2=message.val1
-                        myRobot.userSwitch3=message.val2
-                        myRobot.timerUse=message.val3
-                        myRobot.rainUse=message.val4
-                        myRobot.gpsUse=message.val5
-                        myRobot.stuckIfGpsSpeedBelow=message.val6
-                        myRobot.gpsSpeedIgnoreTime=message.val7
-                        myRobot.dropUse=message.val8
-                        myRobot.statsOverride=message.val9
-                        myRobot.bluetoothUse=message.val10
-                    if message.pageNr =='10':    
-                        myRobot.esp8266Use=message.val1
-                        myRobot.esp8266ConfigString=message.val2
-                        myRobot.tiltUse=message.val3
-                        myRobot.trackingPerimeterTransitionTimeOut=message.val4
-                        myRobot.motorMowForceOff=message.val5
-                        myRobot.MaxSpeedperiPwm=message.val6
-                        myRobot.RollTimeFor45Deg=message.val7
-                        myRobot.DistPeriObstacleAvoid=message.val8
-                        myRobot.circleTimeForObstacle=message.val9
-                        myRobot.DistPeriOutRev=message.val10
-                    if message.pageNr =='11':
-                        myRobot.motorRightOffsetFwd=message.val1
-                        myRobot.motorRightOffsetRev=message.val2
-                        myRobot.perimeterMagMaxValue=message.val3
-                        myRobot.SpeedOdoMin=message.val4
-                        myRobot.SpeedOdoMax=message.val5
-                        myRobot.yawSet1=message.val6
-                        myRobot.yawSet2=message.val7
-                        myRobot.yawSet3=message.val8
-                        myRobot.yawOppositeLane1RollRight=message.val9
-                        myRobot.yawOppositeLane2RollRight=message.val10
-                    if message.pageNr =='12':    
-                        myRobot.yawOppositeLane3RollRight=message.val1
-                        myRobot.yawOppositeLane1RollLeft=message.val2
-                        myRobot.yawOppositeLane2RollLeft=message.val3
-                        myRobot.yawOppositeLane3RollLeft=message.val4
-                        myRobot.DistBetweenLane=message.val5
-                        myRobot.maxLenghtByLane=message.val6
-                        myRobot.perimeter_swapCoilPolarityRight=message.val7
-                        myRobot.perimeter_read2Coil=message.val8
-                        myRobot.maxDriftPerSecond=message.val9
-                        myRobot.delayBetweenTwoDmpAutocalib=message.val10
-                    if message.pageNr =='13':    
-                        myRobot.maxDurationDmpAutocalib=message.val1
-                        myRobot.mowPatternDurationMax=message.val2
-                        myRobot.DistPeriOutStop=message.val3
-                        myRobot.DHT22Use=message.val4
-                        myRobot.RaspberryPIUse=message.val5
-                        myRobot.sonarToFrontDist=message.val6
-                        myRobot.UseBumperDock=message.val7
-                        myRobot.dockingSpeed=message.val8
-                        
-                        refreshAllSettingPage() 
- 
-
-                                           
-                   
-                       
-                        
-                if message.setting_page =='Motor':
-                    if message.pageNr =='1':
-                       
-                        myRobot.motorPowerMax=message.val1
-                        myRobot.motorSpeedMaxRpm=message.val2
-                        myRobot.motorSpeedMaxPwm=message.val3
-                        myRobot.motorAccel=message.val4
-                        myRobot.motorPowerIgnoreTime=message.val5
-                        myRobot.motorRollDegMax=message.val6
-                        myRobot.motorRollDegMin=message.val7
-                        myRobot.DistPeriOutRev=message.val8
-                        myRobot.DistPeriOutStop=message.val9
-                        myRobot.motorLeftPID_Kp=message.val10
-                                                
-                    if message.pageNr =='2':
-                        
-                        myRobot.motorLeftPID_Ki=message.val1
-                        myRobot.motorLeftPID_Kd=message.val2
-                        myRobot.motorLeftSwapDir=message.val3
-                        myRobot.motorRightSwapDir=message.val4
-                        myRobot.motorRightOffsetFwd=message.val5
-                        myRobot.motorRightOffsetRev=message.val6
-                        myRobot.SpeedOdoMin=message.val7
-                        myRobot.SpeedOdoMax=message.val8
-                        myRobot.motorSenseLeftScale=message.val9
-                        myRobot.motorSenseRightScale=message.val10
-                        refreshMotorSettingPage()
-           
-                
-            if message.sentence_type == 'CFG':
-                #text1.config(text= message.debug)
-                consoleInsertText(message.debug)               
-                
-            if message.sentence_type == 'DEB':
-                #text1.config(text= message.debug)
-                consoleInsertText(message.debug)
-        
-        
-    
 
     
 def refreshAllSettingPage():
@@ -1715,27 +1112,8 @@ def ButtonSetMotApply_click():
     myRobot.motorSenseRightScale=sliderRightSense.get()
     ButtonSendSettingToDue_click()
     
-    """PFOD VERSION not use because more slower than rewrite all variable                    
-    send_pfo_message('a02',''+str(sliderPowerMax.get())+'','2','3','4','5','6',)
-    send_pfo_message('a06',''+str(sliderSpeedRpmMax.get())+'','2','3','4','5','6',)
-    send_pfo_message('a15',''+str(sliderSpeedPwmMax.get())+'','2','3','4','5','6',)
-    send_pfo_message('a11',''+str(sliderAccel.get())+'','2','3','4','5','6',)
-    send_pfo_message('a07',''+str(sliderRollDegMax.get())+'','2','3','4','5','6',)
-    send_pfo_message('a19',''+str(sliderRollDegMin.get())+'','2','3','4','5','6',)
-    send_pfo_message('a18',''+str(sliderPowerIgnoreTime.get())+'','2','3','4','5','6',)
-    send_pfo_message('a08',''+str(sliderRevDist.get())+'','2','3','4','5','6',)
-    send_pfo_message('a09',''+str(sliderStopDist.get())+'','2','3','4','5','6',)
-    #send_pfo_message('a14',''+str(sliderPidP.get())+'',''+str(sliderPidI.get())+'',''+str(sliderPidD.get())+'','4','5','6',)
-    send_pfo_message('a22',''+str(sliderRightFwOffset.get())+'','2','3','4','5','6',)
-    send_pfo_message('a23',''+str(sliderRightRevOffset.get())+'','2','3','4','5','6',)
-    send_pfo_message('a30',''+str(sliderSpeedOdoMin.get())+'','2','3','4','5','6',)
-    send_pfo_message('a31',''+str(sliderSpeedOdoMax.get())+'','2','3','4','5','6',)
-    send_pfo_message('a20',''+str(sliderLeftSense.get())+'','2','3','4','5','6',)
-    send_pfo_message('a21',''+str(sliderRightSense.get())+'','2','3','4','5','6',)
-    send_var_message('w','motorLeftSwapDir',''+str(MotVar1.get())+'','motorRightSwapDir',''+str(MotVar2.get())+'','0','0','0','0','0')
-    
     messagebox.showinfo('Info','The Motor Setting are send Do not forget to save')
-    """
+    
 
 
 def ButtonSetBatteryApply_click():
@@ -2225,29 +1603,19 @@ def ButtonGps_click():
     GpsPage.tkraise()
     
 def ButtonMaps_click():
+    print(mymower.mapSelected)
     mymower.focusOnPage=10
-    MapsPage.tkraise() 
+    MapsPage.tkraise()
+    MapsPage.select(mymower.mapSelected)
 
 def ButtonSchedule_click():
     mymower.focusOnPage=7
     TabTimer.tkraise()
     
-    
-def ButtonGyroCal_click():
-    send_pfo_message('g18','1','2','3','4','5','6',)
-    mymower.focusOnPage=4
-    ConsolePage.tkraise()
-
-def ButtonCompasCal_click():
-    
-    ConsolePage.tkraise()
 
 
-    
-def ButtonSendSettingToEeprom_click():
-    
-    ConsolePage.tkraise()
-    
+
+
 
 def ButtonManual_click():
     manualSpeedSlider.set(myRobot.motorSpeedMaxPwm)
@@ -2278,6 +1646,45 @@ def ButtonTest_click():
 def ButtonAuto_click():
     mymower.focusOnPage=1
     AutoPage.tkraise()
+    
+    #try to find the map crc in the raspberry pi and init eveything
+    #check if the map locate into mower have changed
+    fileName=cwd + "/crcMapList.npy"
+    if ((os.path.exists(fileName)) & (mymower.mapCRC !=0)):
+        crcMapList=np.load(fileName)
+        map_find=False
+        for ip in range(int(len(crcMapList))):
+            print("ctrl")
+            print(crcMapList[ip,1])
+            print(mymower.mapCRC)
+            ctrl=crcMapList[ip,1]-mymower.mapCRC
+            print(ctrl)
+            if (abs(ctrl)<mymower.mapCrcRoundingRange):
+                mymower.mapSelected = int(crcMapList[ip,0])
+                print("Auto page map selected")
+                print(mymower.mapSelected)
+                print("auto page map CRC")
+                print(mymower.mapCRC)
+                map_find=True
+                if(mymower.full_house==0):
+                    initActiveMap(0)
+                    initialPlotAutoPage(mymower.startMowPointIdx,mymower.stopMowPointIdx)
+                else:
+                    initActiveMap(1)
+                    initialPlotAutoPageFullHouse()
+           
+                    
+                return
+        if (map_find==False):
+            messagebox.showwarning('warning',"Map unknow (try to upload, see map page)" + str(mymower.mapCRC))
+            
+                
+    
+    else:
+        initActiveMap(1)
+        initialPlotAutoPageFullHouse()
+
+    
     
  
     
@@ -2366,7 +1773,7 @@ def send_serial_message(message1):
     try:
         if DueConnectedOnPi:
             #checkSerial()
-            Due_Serial.flushOutput()
+            Due_Serial.flush()
             Due_Serial.write(bytes(message1,'utf-8'))
             
             if useDebugConsole:
@@ -2483,13 +1890,13 @@ TabSetting.place(x=0,y=0)
 tabMain=tk.Frame(TabSetting,width=800,height=380)
 tabWheelMotor=tk.Frame(TabSetting,width=800,height=380)
 tabMowMotor=tk.Frame(TabSetting,width=800,height=380)
-tabPerimeter=tk.Frame(TabSetting,width=800,height=380)
-tabImu=tk.Frame(TabSetting,width=800,height=380)
+#tabPerimeter=tk.Frame(TabSetting,width=800,height=380)
+#tabImu=tk.Frame(TabSetting,width=800,height=380)
 tabSonar=tk.Frame(TabSetting,width=800,height=380)
 tabBattery=tk.Frame(TabSetting,width=800,height=380)
 tabOdometry=tk.Frame(TabSetting,width=800,height=380)
-tabDateTime=tk.Frame(TabSetting,width=800,height=380)
-tabByLane=tk.Frame(TabSetting,width=800,height=380)
+#tabDateTime=tk.Frame(TabSetting,width=800,height=380)
+#tabByLane=tk.Frame(TabSetting,width=800,height=380)
 tabVision=tk.Frame(TabSetting,width=800,height=380)
 
 
@@ -2498,89 +1905,54 @@ tabVision=tk.Frame(TabSetting,width=800,height=380)
 TabSetting.add(tabMain,text="Main")
 TabSetting.add(tabWheelMotor,text="Wheels Motor")
 TabSetting.add(tabMowMotor,text="Mow Motor")
-TabSetting.add(tabPerimeter,text="Perimeter")
-TabSetting.add(tabImu,text="Imu")
+#TabSetting.add(tabPerimeter,text="Perimeter")
+#TabSetting.add(tabImu,text="Imu")
 TabSetting.add(tabSonar,text="Sonar")
 TabSetting.add(tabBattery,text="Battery")
 TabSetting.add(tabOdometry,text="Odometry")
-TabSetting.add(tabDateTime,text="Date Time")
-TabSetting.add(tabByLane,text="ByLane")
+#TabSetting.add(tabDateTime,text="Date Time")
+#TabSetting.add(tabByLane,text="ByLane")
 TabSetting.add(tabVision,text="Vision")
-
-
-
-#print (TabSetting.index(TabSetting.select()))
-
 
 
 """************* Main setting *****************************"""
 
 ButtonSaveSettingToFile= tk.Button(tabMain)
-ButtonSaveSettingToFile.place(x=30,y=15, height=25, width=200)
+ButtonSaveSettingToFile.place(x=30,y=15, height=60, width=100)
 ButtonSaveSettingToFile.configure(command = ButtonSaveSettingToFile_click)
-ButtonSaveSettingToFile.configure(text="Save Setting To File")
+ButtonSaveSettingToFile.configure(text="Save To File")
 
 ButtonReadSettingFromFile= tk.Button(tabMain)
-ButtonReadSettingFromFile.place(x=30,y=65, height=25, width=200)
+ButtonReadSettingFromFile.place(x=30,y=65, height=25, width=100)
 ButtonReadSettingFromFile.configure(command = ButtonReadSettingFromFile_click)
-ButtonReadSettingFromFile.configure(text="Read Setting From File")
+ButtonReadSettingFromFile.configure(text="Read From File")
 
-# with PCB1.3 need to set JP8 at always ON before flashing because when due flash the PCB poweroff the PI 
 ButtonFlashDue= tk.Button(tabMain)
-ButtonFlashDue.place(x=30,y=175, height=40, width=200)
+ButtonFlashDue.place(x=30,y=175, height=80, width=100)
 ButtonFlashDue.configure(command = ButtonFlashDue_click)
-ButtonFlashDue.configure(text="Update the DUE Firmware")
+ButtonFlashDue.configure(text="Update DUE Firmware")
 
 def ButtonReboot_click():
     print("reboot")
-    send_pfo_message('h04','1','2','3','4','5','6',)
-
-    
     
 ButtonReboot = tk.Button(tabMain,text="Reboot All",  command = ButtonReboot_click)
-ButtonReboot.place(x=30,y=115, height=40, width=200)
+ButtonReboot.place(x=30,y=115, height=40, width=100)
 
+LinearSpeedSlider = tk.Scale(tabMain,orient='horizontal',label='Linear SPEED',relief=tk.SOLID,from_=0, to=0.8)
+LinearSpeedSlider.config(resolution=0.1)
+LinearSpeedSlider.place(x=270,y=10,width=200, height=55)
+LinearSpeedSlider.set(0.4)
 
-ChkBtnperimeterUse=tk.Checkbutton(tabMain, text="Use Perimeter",relief=tk.SOLID,variable=MainperimeterUse,anchor='nw')
-ChkBtnperimeterUse.place(x=270,y=10,width=250, height=20)
-ChkBtnimuUse=tk.Checkbutton(tabMain, text="Use IMU",relief=tk.SOLID,variable=MainimuUse,anchor='nw')
-ChkBtnimuUse.place(x=270,y=40,width=250, height=20)
-ChkBtngpsUse=tk.Checkbutton(tabMain, text="Use GPS",relief=tk.SOLID,variable=MaingpsUse,anchor='nw')
-ChkBtngpsUse.place(x=270,y=70,width=250, height=20)
-ChkBtnbluetoothUse=tk.Checkbutton(tabMain, text="Use Bluetooth",relief=tk.SOLID,variable=MainbluetoothUse,anchor='nw')
-ChkBtnbluetoothUse.place(x=270,y=100,width=250, height=20)
-ChkBtnbumperUse=tk.Checkbutton(tabMain, text="Use Bumper",relief=tk.SOLID,variable=MainbumperUse,anchor='nw')
-ChkBtnbumperUse.place(x=270,y=130,width=250, height=20)
-ChkBtnsonarUse=tk.Checkbutton(tabMain, text="Use Sonar",relief=tk.SOLID,variable=MainsonarUse,anchor='nw')
-ChkBtnsonarUse.place(x=270,y=160,width=250, height=20)
-ChkBtnDHT22Use=tk.Checkbutton(tabMain, text="Use DHT22",relief=tk.SOLID,variable=MainDHT22Use,anchor='nw')
-ChkBtnDHT22Use.place(x=270,y=190,width=250, height=20)
-ChkBtnlawnSensorUse=tk.Checkbutton(tabMain, text="Use Lawn Sensor",relief=tk.SOLID,variable=MainlawnSensorUse,anchor='nw')
-ChkBtnlawnSensorUse.place(x=530,y=10,width=250, height=20)
+DockingSpeedSlider = tk.Scale(tabMain,orient='horizontal',label='Docking SPEED',relief=tk.SOLID, resolution=0.1 ,tickinterval=0.1,from_=0, to=0.8)
+DockingSpeedSlider.place(x=270,y=65,width=200, height=55)
+DockingSpeedSlider.set(0.2)
+
 ChkBtntimerUse=tk.Checkbutton(tabMain, text="Use Timer",relief=tk.SOLID,variable=MaintimerUse,anchor='nw')
 ChkBtntimerUse.place(x=530,y=40,width=250, height=20)
 ChkBtnrainUse=tk.Checkbutton(tabMain, text="Use Rain Sensor",relief=tk.SOLID,variable=MainrainUse,anchor='nw')
 ChkBtnrainUse.place(x=530,y=70,width=250, height=20)
 ChkBtndropUse=tk.Checkbutton(tabMain, text="Use Drop Sensor",relief=tk.SOLID,variable=MaindropUse,anchor='nw')
 ChkBtndropUse.place(x=530,y=100,width=250, height=20)
-ChkBtnesp8266Use=tk.Checkbutton(tabMain, text="Use Esp8266",relief=tk.SOLID,variable=Mainesp8266Use,anchor='nw')
-ChkBtnesp8266Use.place(x=530,y=130,width=250, height=20)
-ChkBtntiltUse=tk.Checkbutton(tabMain, text="Use Tilt Sensor",relief=tk.SOLID,variable=MaintiltUse,anchor='nw')
-ChkBtntiltUse.place(x=530,y=160,width=250, height=20)
-
-ButtonRequestMainSettingFomMower = tk.Button(tabMain)
-ButtonRequestMainSettingFomMower.place(x=10,y=350, height=25, width=150)
-ButtonRequestMainSettingFomMower.configure(command = read_all_setting)
-ButtonRequestMainSettingFomMower.configure(text="Read All From Mower")
-
-ButtonSetMainApply = tk.Button(tabMain)
-ButtonSetMainApply.place(x=300,y=350, height=25, width=100)
-ButtonSetMainApply.configure(command = ButtonSetMainApply_click,text="Send To Mower")
-
-ButtonSendSettingToEeprom= tk.Button(tabMain)
-ButtonSendSettingToEeprom.place(x=30,y=300, height=25, width=200)
-ButtonSendSettingToEeprom.configure(command = ButtonSendSettingToEeprom_click)
-ButtonSendSettingToEeprom.configure(text="Save setting into RTC Eeprom")
 
 
 ButtonBackHome = tk.Button(TabSetting, image=imgBack, command = ButtonBackToMain_click)
@@ -2590,34 +1962,15 @@ ButtonBackHome.place(x=680, y=280, height=120, width=120)
 
 """************* Mow motor setting *****************************"""
 
-ChkBtnmotorMowForceOff=tk.Checkbutton(tabMowMotor, text="SAFETY Force Mowing OFF ",relief=tk.SOLID,variable=MowVar1,anchor='nw')
-ChkBtnmotorMowForceOff.place(x=10,y=300,width=250, height=20)
-
 slidermotorMowSpeedMaxPwm = tk.Scale(tabMowMotor, from_=100, to=255, label='Max PWM Speed',relief=tk.SOLID,orient='horizontal')
 slidermotorMowSpeedMaxPwm.place(x=10,y=10,width=250, height=50)
+
 slidermotorMowSpeedMinPwm = tk.Scale(tabMowMotor, from_=100, to=255, label='Min PWM Speed',relief=tk.SOLID,orient='horizontal')
 slidermotorMowSpeedMinPwm.place(x=10,y=60,width=250, height=50)
-slidermotorMowPID_Kp = tk.Scale(tabMowMotor, from_=0, to=1, label='Mow RPM Regulation Pid P',relief=tk.SOLID,orient='horizontal')
-slidermotorMowPID_Kp.place(x=10,y=110,width=250, height=50)
-slidermotorMowPID_Ki = tk.Scale(tabMowMotor, from_=0, to=1, label='Mow RPM Regulation Pid I',relief=tk.SOLID,orient='horizontal')
-slidermotorMowPID_Ki.place(x=10,y=160,width=250, height=50)
-slidermotorMowPID_Kd = tk.Scale(tabMowMotor, from_=0, to=1, label='Mow RPM Regulation Pid D',relief=tk.SOLID,orient='horizontal')
-slidermotorMowPID_Kd.place(x=10,y=210,width=250, height=50)
 
-slidermotorMowSenseScale = tk.Scale(tabMowMotor, from_=0, to=3,resolution=0.1, label='Motor Sense Factor',relief=tk.SOLID,orient='horizontal')
-slidermotorMowSenseScale.place(x=270,y=10,width=250, height=50)
 slidermotorMowPowerMax = tk.Scale(tabMowMotor, from_=0, to=100, label='Power Max in Watt',relief=tk.SOLID,orient='horizontal')
 slidermotorMowPowerMax.place(x=270,y=60,width=250, height=50)
 
-slidermowPatternDurationMax = tk.Scale(tabMowMotor, from_=0, to=360, label='Mow Pattern Max Duration (Minutes)',relief=tk.SOLID,orient='horizontal')
-slidermowPatternDurationMax.place(x=270,y=160,width=250, height=50)
-
-
-ButtonRequestMainSettingFomMower = tk.Button(tabMowMotor,command = read_all_setting,text="Read All From Mower")
-ButtonRequestMainSettingFomMower.place(x=10,y=350, height=25, width=150)
-
-ButtonSetMainApply = tk.Button(tabMowMotor,command = ButtonSetMowMotorApply_click,text="Send To Mower")
-ButtonSetMainApply.place(x=300,y=350, height=25, width=100)
 
 
 """************* Odometry setting *****************************"""
@@ -2644,7 +1997,7 @@ sliderodometryTicksPerRevolution = tk.Scale(tabOdometry, from_=500, to=1500, lab
 sliderodometryTicksPerRevolution.place(x=10,y=10,width=300, height=50)
 sliderodometryTicksPerRevolution.bind("<ButtonRelease-1>", updatesliderodometryTicksPerRevolution)
 
-sliderodometryWheelDiameter = tk.Scale(tabOdometry, from_=100, to=350,resolution=1, label='Wheels diameters in mm  ',relief=tk.SOLID,orient='horizontal')
+sliderodometryWheelDiameter = tk.Scale(tabOdometry, from_=100, to=350, label='Wheels diameters in mm  ',relief=tk.SOLID,orient='horizontal')
 sliderodometryWheelDiameter.place(x=10,y=60,width=300, height=50)
 sliderodometryWheelDiameter.bind("<ButtonRelease-1>", updatesliderodometryWheelDiameter)
 
@@ -2653,72 +2006,7 @@ sliderodometryWheelBaseCm.place(x=10,y=110,width=300, height=50)
 sliderodometryWheelBaseCm.bind("<ButtonRelease-1>", updatesliderodometryWheelBaseCm)
 
 
-
-
-
-
-
-
-
-
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#ButtonRequestMainSettingFomMower = tk.Button(tabOdometry,command = read_all_setting,text="Read All From Mower")
-#ButtonRequestMainSettingFomMower.place(x=10,y=350, height=25, width=150)
-
-#ButtonSetMainApply = tk.Button(tabOdometry,command = ButtonSetOdometryApply_click,text="Send To Mower")
-#ButtonSetMainApply.place(x=300,y=350, height=25, width=100)
-
-
-
-
-"""************* Date Time setting *****************************"""
-
-
-sliderdate_hour = tk.Scale(tabDateTime, from_=0, to=23,variable=tk_date_hour,label='Hour: ',relief=tk.SOLID,orient='horizontal')
-sliderdate_hour.place(x=10,y=10,width=250, height=50)
-
-sliderdate_minute = tk.Scale(tabDateTime, from_=0, to=59,variable=tk_date_minute, label='Minute ',relief=tk.SOLID,orient='horizontal')
-sliderdate_minute.place(x=10,y=60,width=250, height=50)
-
-sliderdate_dayOfWeek = tk.Scale(tabDateTime, from_=1, to=7, variable=tk_date_dayOfWeek, label='Day of the Week',relief=tk.SOLID,orient='horizontal')
-sliderdate_dayOfWeek.place(x=270,y=10,width=250, height=50)
-
-sliderdate_day = tk.Scale(tabDateTime, from_=1, to=31,variable=tk_date_day, label='Day',relief=tk.SOLID,orient='horizontal')
-sliderdate_day.place(x=270,y=60,width=250, height=50)
-
-sliderdate_month = tk.Scale(tabDateTime, from_=1, to=12,variable=tk_date_month, label='Month  ',relief=tk.SOLID,orient='horizontal')
-sliderdate_month.place(x=270,y=110,width=250, height=50)
-
-sliderdate_year = tk.Scale(tabDateTime, from_=2017, to=2040,variable=tk_date_year, label='Year  ',relief=tk.SOLID,orient='horizontal')
-sliderdate_year.place(x=270,y=160,width=250, height=50)
-
-ButtonRequestTimeSettingFomMower = tk.Button(tabDateTime,command = read_time_setting,text="Read Time From Mower")
-ButtonRequestTimeSettingFomMower.place(x=10,y=350, height=25, width=150)
-
-ButtonSetMainApply = tk.Button(tabDateTime,command = ButtonSendSettingDateTimeToDue_click,text="Send Time To Mower")
-ButtonSetMainApply.place(x=300,y=350, height=25, width=150)
-
-
 """************* Battery setting *****************************"""
-
-ChkBtnbatMonitor=tk.Checkbutton(tabBattery, text="Monitor low Battery",relief=tk.SOLID,variable=BatVar1,anchor='nw')
-ChkBtnbatMonitor.place(x=10,y=300,width=250, height=20)
 
 sliderbatGoHomeIfBelow = tk.Scale(tabBattery, from_=20, to=30,resolution=0.1, label='Go Home if Voltage Below ',relief=tk.SOLID,orient='horizontal')
 sliderbatGoHomeIfBelow.place(x=10,y=10,width=250, height=50)
@@ -2731,18 +2019,6 @@ sliderstartChargingIfBelow.place(x=10,y=160,width=250, height=50)
 sliderbatFullCurrent = tk.Scale(tabBattery, from_=0, to=2,resolution=0.1, label='Charge Full if Current Below  ',relief=tk.SOLID,orient='horizontal')
 sliderbatFullCurrent.place(x=10,y=210,width=250, height=50)
 
-sliderbatFactor = tk.Scale(tabBattery, from_=9, to=12,resolution=0.1, label='Battery Voltage Factor',relief=tk.SOLID,orient='horizontal')
-sliderbatFactor.place(x=270,y=10,width=250, height=50)
-sliderbatChgFactor = tk.Scale(tabBattery, from_=9, to=12,resolution=0.1, label='Charger Voltage Factor',relief=tk.SOLID,orient='horizontal')
-sliderbatChgFactor.place(x=270,y=60,width=250, height=50)
-sliderbatSenseFactor = tk.Scale(tabBattery, from_=0, to=12,resolution=0.1, label='Battery Sense Factor',relief=tk.SOLID,orient='horizontal')
-sliderbatSenseFactor.place(x=270,y=110,width=250, height=50)
-
-ButtonRequestMainSettingFomMower = tk.Button(tabBattery,command = read_all_setting,text="Read All From Mower")
-ButtonRequestMainSettingFomMower.place(x=10,y=350, height=25, width=150)
-
-ButtonSetMainApply = tk.Button(tabBattery,command = ButtonSetBatteryApply_click,text="Send To Mower")
-ButtonSetMainApply.place(x=300,y=350, height=25, width=100)
 
 
 """************* SONAR setting *****************************"""
@@ -2763,348 +2039,16 @@ slidersonarTriggerBelow.place(x=10,y=130,width=250, height=50)
 slidersonarToFront = tk.Scale(tabSonar,orient='horizontal',relief=tk.SOLID, from_=0, to=100, label='Sonar to mower Front in CM ')
 slidersonarToFront.place(x=10,y=200,width=250, height=50)
 
-ButtonRequestMainSettingFomMower = tk.Button(tabSonar)
-ButtonRequestMainSettingFomMower.place(x=10,y=350, height=25, width=150)
-ButtonRequestMainSettingFomMower.configure(command = read_all_setting)
-ButtonRequestMainSettingFomMower.configure(text="Read All From Mower")
-
-ButtonSetMainApply = tk.Button(tabSonar)
-ButtonSetMainApply.place(x=300,y=350, height=25, width=100)
-ButtonSetMainApply.configure(command = ButtonSetSonarApply_click,text="Send To Mower")
 
 
 
 
-
-"""************* IMU setting *****************************"""
-sliderimuDirPID_Kp = tk.Scale(tabImu,orient='horizontal',relief=tk.SOLID, from_=0, to=20,resolution=0.1, label='imuDirPID_Kp (0 to 20)')
-sliderimuDirPID_Kp.place(x=5,y=10,width=250, height=50)
-sliderimuDirPID_Ki = tk.Scale(tabImu,orient='horizontal',relief=tk.SOLID, from_=0, to=20,resolution=0.1, label='imuDirPID_Ki (0 to 20)')
-sliderimuDirPID_Ki.place(x=5,y=60,width=250, height=50)
-sliderimuDirPID_Kd = tk.Scale(tabImu,orient='horizontal',relief=tk.SOLID, from_=0, to=20,resolution=0.1, label='imuDirPID_Kd (0 to 20)')
-sliderimuDirPID_Kd.place(x=5,y=110,width=250, height=50)
-sliderdelayBetweenTwoDmpAutocalib = tk.Scale(tabImu,orient='horizontal',relief=tk.SOLID, from_=60, to=600, label='Delay Between 2 Dmp Autocalib (60 to 600)')
-sliderdelayBetweenTwoDmpAutocalib.place(x=5,y=160,width=250, height=50)
-slidermaxDurationDmpAutocalib = tk.Scale(tabImu,orient='horizontal',relief=tk.SOLID, from_=10, to=100, label='Calib Duration (10 to 100)')
-slidermaxDurationDmpAutocalib.place(x=5,y=210,width=250, height=50)
-slidermaxDriftPerSecond = tk.Scale(tabImu,orient='horizontal',relief=tk.SOLID, from_=0, to=20,resolution=0.1, label='Maxi Drift Per Second (0 to 20)')
-slidermaxDriftPerSecond.place(x=5,y=260,width=250, height=50)
-
-ChkBtnstopMotorDuringCalib=tk.Checkbutton(tabImu, text="Stop Mow Motor During Calib",relief=tk.SOLID,variable=ImuVar1,anchor='nw')
-ChkBtnstopMotorDuringCalib.place(x=5,y=320,width=250, height=20)
-ButtonGyroCal= tk.Button(tabImu)
-ButtonGyroCal.place(x=330,y=10, height=40, width=200)
-ButtonGyroCal.configure(command = ButtonGyroCal_click,text="Start GYRO Calibration")
-ButtonCompasCal= tk.Button(tabImu)
-ButtonCompasCal.place(x=330,y=60, height=40, width=200)
-ButtonCompasCal.configure(command = ButtonCompasCal_click,text="Start COMPAS Calibration")
-
-ButtonRequestMainSettingFomMower = tk.Button(tabImu)
-ButtonRequestMainSettingFomMower.place(x=10,y=350, height=25, width=150)
-ButtonRequestMainSettingFomMower.configure(command = read_all_setting)
-ButtonRequestMainSettingFomMower.configure(text="Read All From Mower")
-
-ButtonSetMainApply = tk.Button(tabImu)
-ButtonSetMainApply.place(x=300,y=350, height=25, width=100)
-ButtonSetMainApply.configure(command = ButtonSetImuApply_click,text="Send To Mower")
 
 """************* Motor setting *****************************"""
 
-sliderPowerMax = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=100,resolution=0.1, label='Power Max in Watt (0 to 100)')
+sliderPowerMax = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=100, label='Power Max in Watt (0 to 100)')
 sliderPowerMax.place(x=5,y=10,width=250, height=50)
-sliderSpeedRpmMax = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=100, label='Speed Max in Rpm (0 to 100)')
-sliderSpeedRpmMax.place(x=5,y=60,width=250, height=50)
-sliderSpeedPwmMax = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=255, label='Speed Max in Pwm (0 to 255)')
-sliderSpeedPwmMax.place(x=5,y=110,width=250, height=50)
-sliderAccel = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=500, to=2000, label='Starting Accel (500 to 2000)')
-sliderAccel.place(x=5,y=160,width=250, height=50)
-sliderPowerIgnoreTime = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=8000, label='Power Ignore Time To Start')
-sliderPowerIgnoreTime.place(x=5,y=210,width=250, height=50)
-sliderRollDegMax = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=360, label='Roll Degrees Max (0 to 360)')
-sliderRollDegMax.place(x=5,y=260,width=250, height=50)
-sliderRollDegMin = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=180, label='Roll Degrees Min (0 to 180)')
-sliderRollDegMin.place(x=5,y=310,width=250, height=50)
 
-sliderRevDist = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=100, label='Reverse Dist from Perimeter in CM')
-sliderRevDist.place(x=270,y=10,width=250, height=50)
-sliderStopDist = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=30, label='Stop Distance on Perimeter in CM')
-sliderStopDist.place(x=270,y=60,width=250, height=50)
-sliderPidP = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=3, resolution=0.01,label='Speed PID -- P (0 to 3)')
-sliderPidP.place(x=270,y=110,width=250, height=50)
-sliderPidI = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=3, resolution=0.01,label='Speed PID -- I (0 to 3)')
-sliderPidI.place(x=270,y=160,width=250, height=50)
-sliderPidD = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=3, resolution=0.01,label='Speed PID -- D (0 to 3)')
-sliderPidD.place(x=270,y=210,width=250, height=50)
-sliderRightFwOffset = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=-50, to=50, label='PWM Right Forward Offset in %')
-sliderRightFwOffset.place(x=270,y=260,width=250, height=50)
-sliderRightRevOffset = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=-50, to=50, label='PWM Right Reverse Offset in %')
-sliderRightRevOffset.place(x=270,y=310,width=250, height=50)
-
-sliderSpeedOdoMin = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=70, label='PWM Speed Odo Min (0 to 70)')
-sliderSpeedOdoMin.place(x=535,y=10,width=250, height=50)
-sliderSpeedOdoMax = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=100, to=255, label='PWM Speed Odo Max (100 to 255)')
-sliderSpeedOdoMax.place(x=535,y=60,width=250, height=50)
-
-sliderLeftSense = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=3,resolution=0.01, label='Motor Sense Left Scale (0 to 3)')
-sliderLeftSense.place(x=535,y=110,width=250, height=50)
-sliderRightSense = tk.Scale(tabWheelMotor,orient='horizontal',relief=tk.SOLID, from_=0, to=3,resolution=0.01, label='Motor Sense Right Scale (0 to 3)')
-sliderRightSense.place(x=535,y=160,width=250, height=50)
-
-
-
-ChkBtnMotorSwapLeftDir=tk.Checkbutton(tabWheelMotor, text="Swap left Dir",relief=tk.SOLID,variable=MotVar1,anchor='nw')
-ChkBtnMotorSwapLeftDir.place(x=535,y=215,width=130, height=20)
-
-ChkBtnMotorSwapRightDir=tk.Checkbutton(tabWheelMotor, text="Swap right Dir",relief=tk.SOLID,variable=MotVar2,anchor='nw')
-ChkBtnMotorSwapRightDir.place(x=535,y=240,width=130, height=20)
-
-
-ButtonRequestMotSettingFomMower = tk.Button(tabWheelMotor)
-ButtonRequestMotSettingFomMower.place(x=535,y=270, height=25, width=140)
-ButtonRequestMotSettingFomMower.configure(command = read_all_setting)
-ButtonRequestMotSettingFomMower.configure(text="Read From Mower")
-
-ButtonSetMotApply = tk.Button(tabWheelMotor)
-ButtonSetMotApply.place(x=535,y=300, height=25, width=100)
-ButtonSetMotApply.configure(command = ButtonSetMotApply_click,text="Send To Mower")
-
-
-
-"""************* Perimeter setting *****************************"""
-def ButtonSetPerimeterApply_click():
-    myRobot.perimeter_timedOutIfBelowSmag=sliderTimeBelowSmag.get()
-    myRobot.perimeter_timeOutSecIfNotInside=sliderTimeNotInside.get()
-    myRobot.perimeterTriggerMinSmag=sliderTrigMinSmag.get()
-    myRobot.MaxSpeedperiPwm=sliderTrackingSpeed.get()
-    myRobot.DistPeriObstacleAvoid=sliderCircleArcDistance.get()
-    myRobot.perimeterMagMaxValue=sliderPeriMagMaxValue.get()
-    myRobot.trackingPerimeterTransitionTimeOut=sliderTransitionTimeout.get()
-
-    myRobot.trackingErrorTimeOut=sliderTrackErrTimeout.get()
-    myRobot.perimeterPID_Kp=sliderTrackPid_P.get()
-    myRobot.perimeterPID_Ki=sliderTrackPid_I.get()
-    myRobot.perimeterPID_Kd=sliderTrackPid_D.get()
-
-    myRobot.perimeter_swapCoilPolarityLeft='0'
-    if PeriVar1.get()==1:
-        myRobot.perimeter_swapCoilPolarityLeft='1'
-    myRobot.perimeter_swapCoilPolarityRight='0'
-    if PeriVar2.get()==1:
-        myRobot.perimeter_swapCoilPolarityRight='1'
-    myRobot.perimeter_read2Coil='0'
-    if PeriVar3.get()==1:
-        myRobot.perimeter_read2Coil='1'
-    myRobot.trakBlockInnerWheel='0'
-    if PeriVar4.get()==1:
-        myRobot.trakBlockInnerWheel='1'
-    ButtonSendSettingToDue_click()
-     
-def ButtonStartArea1_click():
-    ipMessage="curl "+Sender1AdressIP+"/A1"
-    consoleInsertText("Try to Start Area1 Sender " + ipMessage + '\n')
-    sub = subprocess.Popen("curl "+Sender1AdressIP+"/A1", stdout=subprocess.PIPE, stderr=subprocess.PIPE,shell=True)
-    output,error_output = sub.communicate()
-    if str(output)=="b'SENDER A IS ON'":
-        mymower.sigAreaOff=False
-        consoleInsertText("Area1 Sender is Running" + '\n')    
-    else:
-        mymower.sigAreaOff=True
-        consoleInsertText("*********** Area1 Sender FAIL To Start ************" + '\n')     
-        #print (error_output)
-        consoleInsertText(str(error_output)+ '\n')
-    #avoid when start from station to change the area to go ??
-    if (myRobot.stateNames[mymower.state]!='STREV'):
-        send_var_message('w','areaInMowing','1','0','0','0','0','0','0','0')
-    
-def ButtonStopArea1_click():
-    ipMessage="curl "+Sender1AdressIP+"/A0"
-    consoleInsertText("Try to Stop Area1 Sender " + ipMessage + '\n')  
-    sub = subprocess.Popen("curl "+Sender1AdressIP+"/A0", stdout=subprocess.PIPE, stderr=subprocess.PIPE,shell=True)
-    output, error_output = sub.communicate()   
-    if str(output)=="b'SENDER A IS OFF'":
-        mymower.sigAreaOff=True
-        consoleInsertText("Area1 Sender is Stop" + '\n')   
-    else:
-        print ("Area1 Sender FAIL TO response")
-        consoleInsertText("*********** Area1 Sender FAIL To Stop ************" + '\n')   
-        print (error_output)
-        consoleInsertText(str(error_output)+ '\n') 
-    send_var_message('w','areaInMowing','1','0','0','0','0','0','0','0')
-    
-def ButtonStartArea2_click():
-    ipMessage="curl "+Sender2AdressIP+"/B1"
-    consoleInsertText("Try to Start Area2 Sender" + ipMessage + '\n')
-    sub = subprocess.Popen("curl "+Sender2AdressIP+"/B1", stdout=subprocess.PIPE, stderr=subprocess.PIPE,shell=True)
-    output,error_output = sub.communicate()
-    if str(output)=="b'SENDER B IS ON'":
-        mymower.sigAreaOff=False
-        consoleInsertText("Area2 Sender is Running" + '\n')    
-    else:
-        mymower.sigAreaOff=True
-        consoleInsertText("*********** Area2 Sender FAIL To Start ************" + '\n')     
-        #print (error_output)
-        consoleInsertText(str(error_output)+ '\n') 
-    send_var_message('w','areaInMowing','2','0','0','0','0','0','0','0')
-         
-def ButtonStopArea2_click():
-    ipMessage="curl "+Sender2AdressIP+"/B0"
-    consoleInsertText("Try to Stop Area2 Sender " + ipMessage + '\n')  
-    sub = subprocess.Popen("curl "+Sender2AdressIP+"/B0", stdout=subprocess.PIPE, stderr=subprocess.PIPE,shell=True)
-    output, error_output = sub.communicate()   
-    if str(output)=="b'SENDER B IS OFF'":
-        mymower.sigAreaOff=True
-        consoleInsertText("Area2 Sender is Stop" + '\n')   
-    else:
-        print ("Area2 Sender FAIL TO response")
-        consoleInsertText("*********** Area2 Sender FAIL To Stop ************" + '\n')   
-        print (error_output)
-        consoleInsertText(str(error_output)+ '\n') 
-    send_var_message('w','areaInMowing','1','0','0','0','0','0','0','0')
-
-def ButtonStartArea3_click():
-    ipMessage="curl "+Sender3AdressIP+"/B1"
-    consoleInsertText("Try to Start Area3 Sender" + ipMessage + '\n')
-    sub = subprocess.Popen("curl "+Sender3AdressIP+"/B1", stdout=subprocess.PIPE, stderr=subprocess.PIPE,shell=True)
-    output,error_output = sub.communicate()
-    if str(output)=="b'SENDER B IS ON'":
-        mymower.sigAreaOff=False
-        consoleInsertText("Area3 Sender is Running" + '\n')    
-    else:
-        mymower.sigAreaOff=True
-        consoleInsertText("*********** Area3 Sender FAIL To Start ************" + '\n')     
-        #print (error_output)
-        consoleInsertText(str(error_output)+ '\n') 
-    send_var_message('w','areaInMowing','3','0','0','0','0','0','0','0')
-    
-def ButtonStopArea3_click():
-    ipMessage="curl "+Sender3AdressIP+"/B0"
-    consoleInsertText("Try to Stop Area3 Sender" + '\n')  
-    sub = subprocess.Popen("curl "+Sender3AdressIP+"/B0", stdout=subprocess.PIPE, stderr=subprocess.PIPE,shell=True)
-    output, error_output = sub.communicate()   
-    if str(output)=="b'SENDER B IS OFF'":
-        mymower.sigArea3Off=True
-        consoleInsertText("Area3 Sender is Stop" + '\n')   
-    else:
-        print ("Area3 Sender FAIL TO response")
-        consoleInsertText("*********** Area3 Sender FAIL To Stop ************" + '\n')   
-        print (error_output)
-        consoleInsertText(str(error_output)+ '\n') 
-    send_var_message('w','areaInMowing','1','0','0','0','0','0','0','0')                 
-
-sliderTimeBelowSmag = tk.Scale(tabPerimeter,orient='horizontal',relief=tk.SOLID, from_=0, to=500, label='Error if Smag below (0 to 500)')
-sliderTimeBelowSmag.place(x=5,y=10,width=250, height=50)
-sliderTimeNotInside = tk.Scale(tabPerimeter,orient='horizontal',relief=tk.SOLID, from_=0, to=20, label='Timeout if not inside (0 to 20) in Sec')
-sliderTimeNotInside.place(x=5,y=60,width=250, height=50)
-sliderTrigMinSmag = tk.Scale(tabPerimeter,orient='horizontal',relief=tk.SOLID, from_=0, to=1000, label='Big Area Smag Center (0 to 1000)')
-sliderTrigMinSmag.place(x=5,y=110,width=250, height=50)
-sliderTrackingSpeed = tk.Scale(tabPerimeter,orient='horizontal',relief=tk.SOLID, from_=0, to=255, label='Tracking PWM Max Speed (0 to 255)')
-sliderTrackingSpeed.place(x=5,y=160,width=250, height=50)
-sliderCircleArcDistance = tk.Scale(tabPerimeter,orient='horizontal',relief=tk.SOLID, from_=1, to=250, label='Circle Arc Distance (cm)')
-sliderCircleArcDistance.place(x=5,y=210,width=250, height=50)
-sliderPeriMagMaxValue = tk.Scale(tabPerimeter,orient='horizontal',relief=tk.SOLID, from_=500, to=2500, label='Perimeter MAG Max Value (500 to 2500)')
-sliderPeriMagMaxValue.place(x=5,y=260,width=250, height=50)
-
-sliderTrackErrTimeout = tk.Scale(tabPerimeter,orient='horizontal',relief=tk.SOLID, from_=0, to=10000, label='Track error Timeout (0 to 10000)')
-sliderTrackErrTimeout.place(x=270,y=10,width=250, height=50)
-sliderTrackPid_P = tk.Scale(tabPerimeter,orient='horizontal',relief=tk.SOLID, from_=0, to=50,resolution=0.1, label='Tracking PID value P (0 to 50)')
-sliderTrackPid_P.place(x=270,y=60,width=250, height=50)
-sliderTrackPid_I = tk.Scale(tabPerimeter,orient='horizontal',relief=tk.SOLID, from_=0, to=50, resolution=0.1,label='Tracking PID value I (0 to 50)')
-sliderTrackPid_I.place(x=270,y=110,width=250, height=50)
-sliderTrackPid_D = tk.Scale(tabPerimeter,orient='horizontal',relief=tk.SOLID, from_=0, to=50, resolution=0.1,label='Tracking PID value D (0 to 50)')
-sliderTrackPid_D.place(x=270,y=160,width=250, height=50)
-sliderTransitionTimeout = tk.Scale(tabPerimeter,orient='horizontal',relief=tk.SOLID, from_=0, to=5000, label='Transition Timeout (0 to 5000) in msec')
-sliderTransitionTimeout.place(x=270,y=210,width=250, height=50)
-
-
-ChkBtnPeriSwapLeftCoil=tk.Checkbutton(tabPerimeter, text="Swap Left Coil polarity",relief=tk.SOLID,variable=PeriVar1,anchor='nw')
-ChkBtnPeriSwapLeftCoil.place(x=535,y=40,width=250, height=20)
-
-ChkBtnPeriSwapRightCoil=tk.Checkbutton(tabPerimeter, text="Swap Right Coil polarity",relief=tk.SOLID,variable=PeriVar2,anchor='nw')
-ChkBtnPeriSwapRightCoil.place(x=535,y=70,width=250, height=20)
-ChkBtnPeriRead2Coil=tk.Checkbutton(tabPerimeter, text="Read The 2 Coil",relief=tk.SOLID,variable=PeriVar3,anchor='nw')
-ChkBtnPeriRead2Coil.place(x=535,y=100,width=250, height=20)
-ChkBtnPeriBlockInnWheel=tk.Checkbutton(tabPerimeter, text="Block Inner Wheel",relief=tk.SOLID,variable=PeriVar4,anchor='nw')
-ChkBtnPeriBlockInnWheel.place(x=535,y=130,width=250, height=20)
-
-
-ButtonRequestSettingFomMower = tk.Button(tabPerimeter)
-ButtonRequestSettingFomMower.place(x=10,y=350, height=25, width=150)
-ButtonRequestSettingFomMower.configure(command = read_all_setting)
-ButtonRequestSettingFomMower.configure(text="Read From Mower")
-
-ButtonSetPerimeterApply = tk.Button(tabPerimeter)
-ButtonSetPerimeterApply.place(x=200,y=350, height=25, width=100)
-ButtonSetPerimeterApply.configure(command = ButtonSetPerimeterApply_click,text="Send To Mower")
-
-
-"""************* Bylane setting *****************************"""
-
-slideryawSet1 = tk.Scale(tabByLane,orient='horizontal',relief=tk.SOLID, from_=20, to=60, label='Lane 1 positive Yaw Heading')
-slideryawSet1.place(x=5,y=10,width=250, height=50)
-slideryawOppositeLane1RollRight = tk.Scale(tabByLane,orient='horizontal',relief=tk.SOLID, from_=-110, to=-165, label='Lane 1 return Yaw after Roll Right')
-slideryawOppositeLane1RollRight.place(x=5,y=60,width=250, height=50)
-slideryawOppositeLane1RollLeft = tk.Scale(tabByLane,orient='horizontal',relief=tk.SOLID, from_=-110, to=-165, label='Lane 1 return Yaw after Roll Left')
-slideryawOppositeLane1RollLeft.place(x=5,y=110,width=250, height=50)
-
-slideryawSet2 = tk.Scale(tabByLane,orient='horizontal',relief=tk.SOLID, from_=60, to=110, label='Lane 2 positive Yaw Heading')
-slideryawSet2.place(x=270,y=10,width=250, height=50)
-slideryawOppositeLane2RollRight = tk.Scale(tabByLane,orient='horizontal',relief=tk.SOLID, from_=-60, to=-110, label='Lane 2 return Yaw after Roll Right')
-slideryawOppositeLane2RollRight.place(x=270,y=60,width=250, height=50)
-slideryawOppositeLane2RollLeft = tk.Scale(tabByLane,orient='horizontal',relief=tk.SOLID, from_=-60, to=-110, label='Lane 2 return Yaw after Roll Left')
-slideryawOppositeLane2RollLeft.place(x=270,y=110,width=250, height=50)
-
-slideryawSet3 = tk.Scale(tabByLane,orient='horizontal',relief=tk.SOLID, from_=110, to=165, label='Lane 3 positive Yaw Heading')
-slideryawSet3.place(x=535,y=10,width=250, height=50)
-slideryawOppositeLane3RollRight = tk.Scale(tabByLane,orient='horizontal',relief=tk.SOLID, from_=-15, to=-80, label='Lane 3 return Yaw after Roll Right')
-slideryawOppositeLane3RollRight.place(x=535,y=60,width=250, height=50)
-slideryawOppositeLane3RollLeft = tk.Scale(tabByLane,orient='horizontal',relief=tk.SOLID, from_=-15, to=-80, label='Lane 3 return Yaw after Roll Left')
-slideryawOppositeLane3RollLeft.place(x=535,y=110,width=250, height=50)
-
-
-sliderDistBetweenLane = tk.Scale(tabByLane,orient='horizontal',relief=tk.SOLID, from_=10, to=100, label='Distance Between Lane (CM)')
-sliderDistBetweenLane.place(x=140,y=200,width=250, height=50)
-
-slidermaxLenghtByLane = tk.Scale(tabByLane,orient='horizontal',relief=tk.SOLID, from_=3, to=50, label='Maximum Drive Distance (M)')
-slidermaxLenghtByLane.place(x=410,y=200,width=250, height=50)
-
-def ButtonLaneUseNr_click():
-    send_pfo_message('w01','1','2','3','4','5','6',)
-ButtonLaneUseNr = tk.Button(tabByLane,command = ButtonLaneUseNr_click,text="Next Lane")
-ButtonLaneUseNr.place(x=10,y=200,width=100, height=20)
-
-def ButtonRollDir_click():
-    send_pfo_message('w20','1','2','3','4','5','6',) 
-ButtonRollDir = tk.Button(tabByLane,command = ButtonRollDir_click,text="Next Roll Dir")
-ButtonRollDir.place(x=10,y=230,width=100, height=20)
-
-
-Frame1= tk.Frame(tabByLane)
-Frame1.place(x=10, y=260, height=90, width=650)
-Frame1.configure(borderwidth="3",relief=tk.GROOVE,background="#d9d9d9",highlightbackground="#d9d9d9",highlightcolor="black")
-
-
-tk.Label(Frame1,text="tk_laneInUse",fg='green').place(x=100,y=10,width=100, height=20)
-tk.Label(Frame1,textvariable=tk_laneInUse, fg='red',font=("Arial", 20)).place(x=100,y=40,width=100, height=20)
-tk.Label(Frame1,text="Last Roll Dir",fg='green').place(x=220,y=10,width=100, height=20)
-tk.Label(Frame1,textvariable=tk_rollDir, fg='red',font=("Arial", 20)).place(x=220,y=40,width=100, height=20)
-tk.Label(Frame1,text="tk_YawActual",fg='green').place(x=330,y=10,width=100, height=20)
-tk.Label(Frame1,textvariable=tk_YawActual, fg='red',font=("Arial", 20)).place(x=330,y=40,width=100, height=20)
-tk.Label(Frame1,text="tk_YawCible",fg='green').place(x=440,y=10,width=100, height=20)
-tk.Label(Frame1,textvariable=tk_YawCible, fg='red',font=("Arial", 20)).place(x=440,y=40,width=100, height=20)
-BtnBylaneStartRec= tk.Button(Frame1,command = BtnBylaneStartRec_click,text="Start")
-BtnBylaneStartRec.place(x=10,y=10, height=25, width=60)
-BtnBylaneStopRec= tk.Button(Frame1,command = BtnBylaneStopRec_click,text="Stop")
-BtnBylaneStopRec.place(x=10,y=40, height=25, width=60)
-
-ButtonRequestSettingFomMower = tk.Button(tabByLane)
-ButtonRequestSettingFomMower.place(x=10,y=350, height=25, width=150)
-ButtonRequestSettingFomMower.configure(command = read_all_setting)
-ButtonRequestSettingFomMower.configure(text="Read All From Mower")
-
-
-ButtonSetByLaneApply = tk.Button(tabByLane)
-ButtonSetByLaneApply.place(x=300,y=350, height=25, width=150)
-ButtonSetByLaneApply.configure(command = ButtonSendSettingByLaneToDue_click,text="Send By Lane To Mower")
 
 
 """************* Vision setting *****************************"""
@@ -3238,118 +2182,358 @@ rebuild_treeVisionview()
 
 """ THE AUTO PAGE ***************************************************"""
 
+
+
+
+    
+
 def button_home_click():
     message="AT+C,-1,4,-1,-1,-1,-1,-1,1"
     message=str(message)
     message=message + '\r'
     send_serial_message(message)  
     
-def button_track_click():
-    mymower.areaToGo=tk_areaToGo.get()
-    send_var_message('w','mowPatternCurr',''+str(AutoSpeedSlider.get())+'','laneUseNr','1','rollDir','0','0','0','0')
-    send_var_message('w','whereToStart','1','areaToGo',''+str(tk_areaToGo.get())+'','actualLenghtByLane','50','0','0','0')
-    send_pfo_message('rk','1','2','3','4','5','6',)
+
 
 def buttonStartMow_click():
     # mow en ,op,speed,timeout,finishandrestart,mowpercent,skipNextMowingPoint,sonar.enabled
-    message="AT+C,-1,1,"+str(AutoSpeedSlider.get())+",100,0,"+str(AutoPercentSlider.get()) +",-1,1"
+
+    message="AT+C,-1,1,"+str(LinearSpeedSlider.get())+",100,0,"+str(AutoSliderStart.get()/100) +",0,0,208"
     message=str(message)
     message=message + '\r'
-    #print(message)
+    print(message)
     send_serial_message(message)  
 
+def updatesAutoSliderStart(event):
+    mymower.startMowPointIdx=int(mymower.mowPointsCount*AutoSliderStart.get()/100)
+    if (mymower.startMowPointIdx<0):
+        mymower.startMowPointIdx=0
+    if (int(AutoSliderStart.get())>=int(AutoSliderStop.get())):
+        AutoSliderStop.set(AutoSliderStart.get())
+        mymower.stopMowPointIdx=mymower.startMowPointIdx+1
+        tk_labelStopIdx.set(mymower.stopMowPointIdx)
+        
+    tk_labelStartIdx.set(mymower.startMowPointIdx)
+    initialPlotAutoPage(mymower.startMowPointIdx,mymower.stopMowPointIdx)
+    
+    
 
+def updatesAutoSliderStop(event):
+    mymower.stopMowPointIdx=int(mymower.mowPointsCount*int(AutoSliderStop.get())/100)
+    tk_labelStopIdx.set(mymower.stopMowPointIdx)
+    initialPlotAutoPage(mymower.startMowPointIdx,mymower.stopMowPointIdx)
+    
+   
+def updatesRdBtn_HouseView(event):
+    if tk_HouseView.get()==1:
+        mymower.full_house=1
+        print("house view")
+        initialPlotAutoPageFullHouse()
+         
+    else:
+        mymower.full_house=0
+        print("Map view")
+        initialPlotAutoPage(mymower.startMowPointIdx,mymower.stopMowPointIdx)
+        
+        
+
+    
 def updatesRdBtn_Resume(event):
     
     if tk_ResumeMowing.get()==1:
-        AutoPercentSlider.place_forget()
+        AutoSliderStart.place_forget()
         AutoPercentLabel.place_forget()
         AutoPercentLabel.text=''
-        AutoPercentSlider.set(-1)
+        AutoSliderStart.set(-1)
+        AutoSliderStop.set(100)
+        
+        
+        
     else:        
-        AutoPercentSlider.place(x=50,y=190,width=300, height=60)
-        AutoPercentLabel.place(x=0,y=210)
+        AutoSliderStart.place(x=430,y=175,width=40, height=170)
+        AutoPercentLabel.place(x=445,y=155)        
+    mymower.startMowPointIdx=mymower.mowPointsIdx
+    initialPlotAutoPage(mymower.startMowPointIdx,mymower.stopMowPointIdx)
+    tk_labelStartIdx.set(mymower.mowPointsIdx)
+    tk_labelStopIdx.set(mymower.mowPointsCount)
+    
    
-
-
-
-
 AutoPage = tk.Frame(fen1)
 AutoPage.place(x=0, y=0, height=400, width=800)
 
 batteryFrame= tk.Frame(AutoPage)
-batteryFrame.place(x=230, y=10, height=60, width=100)
+batteryFrame.place(x=430, y=10, height=80, width=100)
 batteryFrame.configure(borderwidth="3",relief=tk.GROOVE,background="#d9d9d9",highlightbackground="#d9d9d9",highlightcolor="black")
 
-tk.Label(batteryFrame,text="BATTERY",fg='green').pack(side='top',anchor='n')
+tk.Label(batteryFrame,text="BATTERY",fg='green',font=("Arial", 12)).pack(side='top',anchor='n')
+tk.Label(batteryFrame,textvariable=tk_batSense, fg='red',font=("Arial", 12)).pack(side='bottom',anchor='n')
 tk.Label(batteryFrame,textvariable=tk_batteryVoltage, fg='red',font=("Arial", 20)).pack(side='bottom',anchor='n')
 
 temperatureFrame= tk.Frame(AutoPage)
-temperatureFrame.place(x=340, y=10, height=60, width=100)
+temperatureFrame.place(x=430, y=95, height=60, width=100)
 temperatureFrame.configure(borderwidth="3",relief=tk.GROOVE,background="#d9d9d9",highlightbackground="#d9d9d9",highlightcolor="black")
-
 tk.Label(temperatureFrame,text="TEMPERATURE",fg='green').pack(side='top',anchor='n')
 tk.Label(temperatureFrame,textvariable=tk_PiTemp, fg='red',font=("Arial", 20)).pack(side='bottom',anchor='n')
 
-loopsFrame= tk.Frame(AutoPage)
-loopsFrame.place(x=445, y=10, height=60, width=100)
-loopsFrame.configure(borderwidth="3",relief=tk.GROOVE,background="#d9d9d9",highlightbackground="#d9d9d9",highlightcolor="black")
+GpsFrame= tk.Frame(AutoPage)
+GpsFrame.place(x=570, y=145, width=100, height=80)
+GpsFrame.configure(borderwidth="3",relief=tk.GROOVE,background="#d9d9d9",highlightbackground="#d9d9d9",highlightcolor="black")
+tk.Label(GpsFrame,text="GPS",fg='green',font=("Arial", 12)).place(x=25,y=1)
+tk.Label(GpsFrame,textvariable=tk_GpsSolution, fg='red',font=("Arial", 20)).pack(side='bottom',anchor='center')
+tk.Label(GpsFrame,textvariable=tk_gpsnumSV, fg='black',font=("Arial", 10)).pack(side='bottom',anchor='center')
 
-tk.Label(loopsFrame,text="LOOP/SEC",fg='green').pack(side='top',anchor='n')
-tk.Label(loopsFrame,textvariable=tk_loopsPerSecond, fg='red',font=("Arial", 20)).pack(side='bottom',anchor='n')
+PosFrame= tk.Frame(AutoPage)
+PosFrame.place(x=570, y=228, width=100, height=50)
+PosFrame.configure(borderwidth="3",relief=tk.GROOVE,background="#d9d9d9",highlightbackground="#d9d9d9",highlightcolor="black")
+tk.Label(PosFrame,text="POS",fg='green',font=("Arial", 12)).place(x=25,y=1)
+tk.Label(PosFrame,textvariable=tk_mowPointIdx, fg='black',font=("Arial", 10)).pack(side='bottom',anchor='center')
 
-yawFrame= tk.Frame(AutoPage)
-yawFrame.place(x=245, y=70, height=60, width=80)
-yawFrame.configure(borderwidth="3",relief=tk.GROOVE,background="#d9d9d9",highlightbackground="#d9d9d9",highlightcolor="black")
-tk.Label(yawFrame,text="Actual Pt",fg='green').pack(side='top',anchor='n')
-tk.Label(yawFrame,textvariable=tk_ImuYaw, fg='red',font=("Arial", 20)).pack(side='bottom',anchor='n')
+#creation of the canvas for map view
+FrameLiveMap = tk.Frame(AutoPage,borderwidth="1",relief=tk.SOLID)
+FrameLiveMap.place(x=5,y=5, height=330, width=360)
 
-pitchFrame= tk.Frame(AutoPage)
-pitchFrame.place(x=355, y=70, height=60, width=80)
-pitchFrame.configure(borderwidth="3",relief=tk.GROOVE,background="#d9d9d9",highlightbackground="#d9d9d9",highlightcolor="black")
-tk.Label(pitchFrame,text="Tot Sense",fg='green').pack(side='top',anchor='n')
-tk.Label(pitchFrame,textvariable=tk_batSense, fg='red',font=("Arial", 20)).pack(side='bottom',anchor='n')
+figLiveMap,axLiveMap=plt.subplots()
+#axLiveMap.set_xlim(left=-30, right=30)
+axLiveMap.autoscale(False)
+
+canvasLiveMap = FigureCanvasTkAgg(figLiveMap, master=FrameLiveMap)
+canvasLiveMap.get_tk_widget().place(x=0,y=0,width=360, height=330)
+
+axLiveMap.plot(mymower.ActiveMapX,mymower.ActiveMapY, color='r', linewidth=0.4,marker='.',markersize=2)
+canvasLiveMap.draw()
+
+fig, ax = plt.subplots()
+ax.plot(np.random.rand(10))
+
+def onclick(event):
+    
+    print('%s click: button=%d, x=%d, y=%d, xdata=%f, ydata=%f' %
+          ('double' if event.dblclick else 'single', event.button,
+           event.x, event.y, event.xdata, event.ydata))
+
+    Point_X = event.xdata
+    Point_Y = event.ydata
+    if (event.dblclick):
+        point = geometry.Point(Point_X, Point_Y)
+        
+        for idx in range(int(len(mymower.mapNrList))):
+                mapNr=int(mymower.mapNrList[idx])
+                if(mymower.polygon[mapNr].contains(point)):
+                    print (mapNr)
+                    returnval=messagebox.askyesno('Info',"Upload map "+ str(mapNr) + " to robot")
+                    if (returnval):
+                        mymower.mapSelected=mapNr
+                        export_map_to_mower(mymower.House,mymower.mapSelected)
+                        
+                        tk_HouseView.set(0)
+                        initActiveMap(0)
+                        initialPlotAutoPage(0,99999)
+                        return
+                        
 
 
-rollFrame= tk.Frame(AutoPage)
-rollFrame.place(x=460, y=70, height=60, width=80)
-rollFrame.configure(borderwidth="3",relief=tk.GROOVE,background="#d9d9d9",highlightbackground="#d9d9d9",highlightcolor="black")
-tk.Label(rollFrame,text="ROLL",fg='green').pack(side='top',anchor='n')
-tk.Label(rollFrame,textvariable=tk_ImuRoll, fg='red',font=("Arial", 20)).pack(side='bottom',anchor='n')
+    
+    #figLiveMap.canvas.mpl_disconnect(cid)
 
-
-##tk.Label(Frame1,text="AREA Nr",fg='green').place(x=5,y=65)
-##RdBtn_Random=tk.Radiobutton(Frame1, text="1",font=("Arial", 12), variable=tk_areaToGo, value=1).place(x=5,y=85,width=90, height=30)
-##RdBtn_ByLane=tk.Radiobutton(Frame1, text="2", font=("Arial", 12),variable=tk_areaToGo, value=2).place(x=105,y=85,width=90, height=30)
-##RdBtn_Perimeter=tk.Radiobutton(Frame1, text="3", font=("Arial", 12),variable=tk_areaToGo, value=3).place(x=205,y=85,width=90, height=30)
-
-ButtonStartMow = tk.Button(AutoPage, image=imgstartMow, command = buttonStartMow_click)
-ButtonStartMow.place(x=10,y=10,width=100, height=130)
-Buttonhome = tk.Button(AutoPage, image=imgHome, command = button_home_click)
-Buttonhome.place(x=120,y=10,width=100, height=130)
-#Buttontrack = tk.Button(Frame1, image=imgTrack, command = button_track_click)
-#Buttontrack.place(x=380,y=10,width=100, height=130)
-ButtonStopAllAuto = tk.Button(AutoPage, image=imgStopAll, command = button_stop_all_click)
-ButtonStopAllAuto.place(x=580,y=10,width=100, height=130)
+cid = figLiveMap.canvas.mpl_connect('button_press_event', onclick)
 
 
 
-AutoSpeedSlider = tk.Scale(AutoPage,orient='horizontal', resolution=0.1 ,from_=0, to=0.8)
-AutoSpeedSlider.place(x=50,y=150,width=300, height=60)
-AutoSpeedSlider.set(0.3)
-tk.Label(AutoPage, text='SPEED',fg='green').place(x=0,y=170)
-AutoPercentSlider = tk.Scale(AutoPage,orient='horizontal', resolution=1 ,from_=-1, to=100)
-AutoPercentSlider.place(x=50,y=190,width=300, height=60)
-AutoPercentSlider.set(0)
-AutoPercentLabel = tk.Label(AutoPage, text='Where',fg='green')
-AutoPercentLabel.place(x=0,y=210)
+toolbarLiveMap = VerticalNavigationToolbar2Tk(canvasLiveMap, AutoPage)
+toolbarLiveMap.children['!button2'].pack_forget()
+toolbarLiveMap.children['!button3'].pack_forget()
+toolbarLiveMap.update()
+toolbarLiveMap.place(x=370,y=40)
 
-RdBtn_Resume=tk.Checkbutton(AutoPage, text="Resume last mowing session",font=("Arial", 12), variable=tk_ResumeMowing)
-RdBtn_Resume.place(x=5,y=250,width=300, height=30)
+
+def initActiveMap(full_house):
+    #main data
+    
+    if(full_house==1):
+        print("init full map " + str(mymower.full_house))
+        
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/MAIN.npy"
+    
+    if (os.path.exists(fileName)):
+        maindata=np.load(fileName)
+        mymower.perimeterPointsCount=int(maindata[0])
+        mymower.exclusionPointsCount=int(maindata[1])
+        mymower.dockPointsCount=int(maindata[2])
+        mymower.mowPointsCount=int(maindata[3])
+        mymower.freePointsCount=int(maindata[4])
+        mymower.nbTotalExclusion=int(maindata[5])
+        mymower.fileMapCRC=int(maindata[6])
+    else:
+        messagebox.showwarning('warning',"No main data for this map ???")
+        
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/PERIMETER.npy"
+    if (os.path.exists(fileName)):
+        mymower.perimeter=np.load(fileName)      
+    else:
+        messagebox.showwarning('warning',"No perimeter for this map ???")
+        
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/MOW.npy"
+    if (os.path.exists(fileName)):
+        mymower.mowPts=np.load(fileName)
+    else:
+        messagebox.showwarning('warning',"No mowing points for this map ???")
+        
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/DOCK.npy"
+    if (os.path.exists(fileName)):
+        mymower.dockPts=np.load(fileName)
+
+
+def initialPlotAutoPageFullHouse():
+    if (mymower.mapSelected==0):
+        return
+    mymower.mapNrList.clear
+    axLiveMap.clear()
+    
+    fileName=cwd + "/crcMapList.npy"
+    mymower.totalMowingArea=0
+    if (os.path.exists(fileName)):
+        crcMapList=np.load(fileName)
+        for idx in range(int(len(crcMapList))):
+            mapNr=int(crcMapList[idx,0])
+            mymower.mapNrList.append(mapNr)
+            fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mapNr)+"/PERIMETER.npy"
+            if (os.path.exists(fileName)):
+                perimeterArray=np.load(fileName)
+                polygon1 = Polygon(np.squeeze(perimeterArray))
+                mymower.polygon[mapNr] = polygon1 #keep the polygon for later search
+                
+                #print(str(mapNr)+ " " +str(int(polygon1.area)))
+                mymower.totalMowingArea=mymower.totalMowingArea+int(polygon1.area)                #print(polygon1.centroid.coords[0][0]) center of polygon
+                #draw perimeter
+                x = np.zeros(int(len(perimeterArray)+1))
+                y = np.zeros(int(len(perimeterArray)+1))
+                for idx1 in range(int(len(perimeterArray))):
+                    x[idx1] = perimeterArray[idx1][0]
+                    y[idx1] = perimeterArray[idx1][1]       
+                      #close the drawing
+                x[idx1+1] = perimeterArray[0][0]
+                y[idx1+1] = perimeterArray[0][1]
+                axLiveMap.text(polygon1.centroid.coords[0][0], polygon1.centroid.coords[0][1], mapNr, fontsize=8, bbox=dict(facecolor='yellow', alpha=0.4))
+                axLiveMap.plot(x,y, color='r', linewidth=0.4)#,marker='.',markersize=2)
+ 
+            else:
+                print("no perimeter data for this map "+str(mapNr))
+                
+
+    else:
+        print("error no crcMapList.npy")
+
+   
+    canvasLiveMap.draw()
+    #print(mymower.totalMowingArea)
+    tk_AutoInfoMap.set("House " + "{0:0>2}".format(mymower.House) + " Total Area " +str(mymower.totalMowingArea)+ " m2")
+
+    
+
+def initialPlotAutoPage(start,stop):
+    if (mymower.mapSelected==0):
+        print("no map selected into initialPlotAutoPage")
+        return
+     
+    axLiveMap.clear()
+    if (mymower.opNames == "MOW"):
+        mymower.startMowPointIdx= mymower.mowPointsIdx
+    #reduce len of the array according start and stop
+        #bug here
+    array_size=int(len(mymower.mowPts)-mymower.startMowPointIdx)#-(len(mymower.mowPts)-mymower.stopMowPointIdx)
+    print(array_size)
+    x_lon = np.zeros(array_size)
+    y_lat = np.zeros(array_size)
+    idx_tab=0
+    
+    
+    for ip in range(int(len(mymower.mowPts))):
+        if((ip>=mymower.startMowPointIdx) and (ip<=mymower.stopMowPointIdx)):
+            x_lon[idx_tab] = float(mymower.mowPts[ip][0])
+            y_lat[idx_tab] = float(mymower.mowPts[ip][1])
+            idx_tab=idx_tab+1
+    x_lon[x_lon != 0.00] #try to remove 0 value ???????????
+    y_lat[y_lat != 0.00]
+    #print(x_lon)
+    #print(y_lat)
+    axLiveMap.plot(x_lon,y_lat, color='black', linewidth=0.2)                 
+ 
+
+    #draw perimeter
+    x_lon = np.zeros(int(len(mymower.perimeter)+1))
+    y_lat = np.zeros(int(len(mymower.perimeter)+1))
+    for ip in range(int(len(mymower.perimeter))):
+        x_lon[ip] = mymower.perimeter[ip][0]
+        y_lat[ip] = mymower.perimeter[ip][1]       
+      #close the drawing
+    x_lon[ip+1] = mymower.perimeter[0][0]
+    y_lat[ip+1] = mymower.perimeter[0][1]
+    
+    #perimeterArray=mymower.map[mymower.mapSelected]
+    polygon1 = Polygon(np.squeeze(mymower.perimeter))
+    mymower.actualMowingArea=int(polygon1.area)       
+
+    axLiveMap.plot(x_lon,y_lat, color='r', linewidth=0.6)#,marker='.',markersize=2)
+    figLiveMap.subplots_adjust(left=0, right=1, top=1, bottom=0)
+ 
+    #draw dock     
+    x_lon = np.zeros(int(len(mymower.dockPts)))
+    y_lat = np.zeros(int(len(mymower.dockPts)))
+    for ip in range(int(len(mymower.dockPts))):
+        x_lon[ip] = mymower.dockPts[ip][0]
+        y_lat[ip] = mymower.dockPts[ip][1]
+    axLiveMap.plot(x_lon,y_lat, color='b', linewidth=0.4)
+   # print(str(x_lon[ip])+' station '+str(y_lat[ip]) )
+   # print(str(mymower.statex)+' pos     '+str(mymower.statey) )
+    
+    axLiveMap.scatter(x_lon[ip],y_lat[ip], color='r', s=20)
+    axLiveMap.scatter(float(mymower.statex),float(mymower.statey), color='g', s=10)
+
+    tk_AutoInfoMap.set("House " + "{0:0>2}".format(mymower.House) + " Map "+"{0:0>2}".format(mymower.mapSelected)+" Area " +str(mymower.actualMowingArea)+" m2")
+   
+    canvasLiveMap.draw()
+    
+
+tk_AutoInfoMap.set("No Map")
+AutoInfoMapLabel=tk.Label(AutoPage, textvariable=tk_AutoInfoMap,font=("Arial", 10))
+AutoInfoMapLabel.place(x=150,y=335)
+
+
+
+AutoSliderStart = tk.Scale(AutoPage,orient='vertical', resolution=1 ,font=("Arial", 8) ,from_=-1, to=100)
+AutoSliderStart.place(x=430,y=175,width=40, height=170)
+AutoSliderStart.set(0)
+AutoLabelStartIdx=tk.Label(AutoPage, textvariable=tk_labelStartIdx,font=("Arial", 8)).place(x=453,y=342)
+
+AutoSliderStop = tk.Scale(AutoPage,orient='vertical', resolution=1 ,font=("Arial", 8) ,from_=0, to=100)
+AutoSliderStop.place(x=470,y=175,width=40, height=170)
+AutoSliderStop.set(100)
+AutoLabelStopIdx=tk.Label(AutoPage, textvariable=tk_labelStopIdx,font=("Arial", 8)).place(x=493,y=342)
+
+AutoSliderStart.bind("<ButtonRelease-1>", updatesAutoSliderStart)
+AutoSliderStop.bind("<ButtonRelease-1>", updatesAutoSliderStop)
+AutoPercentLabel = tk.Label(AutoPage, text='Start  Stop',fg='green')
+AutoPercentLabel.place(x=445,y=155)
+
+RdBtn_Resume=tk.Checkbutton(AutoPage, text="Resume last session",font=("Arial", 10), variable=tk_ResumeMowing)
+RdBtn_Resume.place(x=515,y=290,width=150, height=20)
 RdBtn_Resume.bind("<ButtonRelease-1>", updatesRdBtn_Resume)
 
-labelGpsSolution=tk.Label(AutoPage, text='Unknow',textvariable=tk_GpsSolution,fg='green')
-labelGpsSolution.place(x=500,y=200)
+RdBtn_HouseView=tk.Checkbutton(AutoPage, text="House view",font=("Arial", 10), variable=tk_HouseView)
+RdBtn_HouseView.place(x=5,y=335,width=90, height=15)
+RdBtn_HouseView.bind("<ButtonRelease-1>", updatesRdBtn_HouseView)
+
+ButtonStartMow = tk.Button(AutoPage, image=imgstartMow, command = buttonStartMow_click)
+ButtonStartMow.place(x=570,y=10,width=100, height=130)
+Buttonhome = tk.Button(AutoPage, image=imgHome, command = button_home_click)
+Buttonhome.place(x=680,y=145,width=100, height=130)
+ButtonStopAllAuto = tk.Button(AutoPage, image=imgStopAll, command = button_stop_all_click)
+ButtonStopAllAuto.place(x=680,y=10,width=100, height=130)
 
 
 ButtonBackHome = tk.Button(AutoPage, image=imgBack, command = ButtonBackToMain_click)
@@ -3495,19 +2679,63 @@ ButtonBackHome.place(x=680, y=280, height=120, width=120)
 """ The Console page  ************************************"""
 
 def ButtonListVar_click():
-    message="AT+RN"
-    message=str(message)
-    #message=message + '\r' +'\n'
-    message=message + '\r'
-    send_serial_message(message)
-    
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps02"+"/DOCK.npy"
+##    if (os.path.exists(fileName)):
+##            crc_mow=0.0
+##            mowPts=np.load(fileName)
+##            mowPts_count=int(len(mowPts))
+##            print(mowPts)
+##            
+##            for ip in range(int(len(mowPts))):
+##                
+##                crc_mow=(crc_mow) + (100*float(mowPts[ip][0])) + (100*float(mowPts[ip][1]))
+##                
+##            print(crc_mow)
+##            crc_mow=0.0
+##            for ip in range(int(len(mowPts1))):
+##                
+##                crc_mow=(crc_mow) + (100*(mowPts1[ip][0])) + (100*(mowPts1[ip][1]))
+##                
+##            print(crc_mow)
+
+
+    if (os.path.exists(fileName)):
+            crc_mow=0.0
+            mowPts=np.load(fileName)
+            mowPts_count=int(len(mowPts))
+            print(mowPts)
+            
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps04"+"/DOCK.npy"
+    if (os.path.exists(fileName)):
+            crc_mow=0.0
+            mowPts1=np.load(fileName)
+            mowPts1_count=int(len(mowPts1))
+            print(mowPts1)
+
+    for ip in range(int(len(mowPts))):
+       # print(mowPts[ip][0], " / " , mowPts1[ip][0])
+
+        
+        if ((100*float(mowPts[ip][0])) != (100*float(mowPts1[ip][0]))) :
+            print("erreur x :", ip ,(mowPts[ip][0]) ,(mowPts1[ip][0]) )
+
+        if ((100*float(mowPts[ip][1])) != (100*float(mowPts1[ip][1]))) :
+            print("erreur y :", ip ,100*float(mowPts[ip][1]) ,100*float(mowPts1[ip][1]) )
+    print("fini")
 
 
 def ButtonConsoleMode_click():
     send_pfo_message('h03','1','2','3','4','5','6',)
 
 def ButtonClearConsole_click():
-    txtConsoleRecu.delete('1.0',tk.END) #delete all
+    
+    txtRecu.delete('1.0',tk.END) 
+    txtSend.delete('1.0',tk.END)
+    txtConsoleRecu.delete('1.0',tk.END) 
+        
+
     
 
 ConsolePage = tk.Frame(fen1)
@@ -3779,39 +3007,380 @@ ButtonBackHome.place(x=680, y=280, height=120, width=120)
 
 
 """ THE MAPS PAGE ***************************************************"""
-def calcMapCRC():  
-  #long crc = perimeterPoints.crc() + exclusions.crc() + dockPoints.crc() + mowPoints.crc();       
-  return crc
-
-
 
 
 def onTabChange(event):
     mymower.mapSelected = int(MapsPage.index("current"))
-    fileName=cwd + "/maps/MAIN"+str(mymower.mapSelected)+".npy"
-    
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/MAIN.npy"      
     if (os.path.exists(fileName)):
         maindata=np.load(fileName)
-        mymower.perimeterPointsCount=maindata[0]
-        mymower.exclusionPointsCount=maindata[1]
-        mymower.dockPointsCount=maindata[2]
-        mymower.mowPointsCount=maindata[3]
-        mymower.freePointsCount=maindata[4]
-        mymower.nbTotalExclusion=maindata[5]
-        mymower.fileMapCRC=maindata[6]
+        mymower.perimeterPointsCount=int(maindata[0])
+        mymower.exclusionPointsCount=int(maindata[1])
+        mymower.dockPointsCount=int(maindata[2])
+        mymower.mowPointsCount=int(maindata[3])
+        mymower.freePointsCount=int(maindata[4])
+        mymower.nbTotalExclusion=int(maindata[5])
+        mymower.fileMapCRC=int(maindata[6])
+        Infolinetxt=""
+        Infolinetxt=Infolinetxt+ "Perimeter points: " + str(mymower.perimeterPointsCount) + '\n'
+        Infolinetxt=Infolinetxt+ "Nb Exclusions: " + str(mymower.nbTotalExclusion) + '\n'
+        Infolinetxt=Infolinetxt+ "Exclusion points: " + str(mymower.exclusionPointsCount) + '\n'
+        Infolinetxt=Infolinetxt+ "Mow points: " + str(mymower.mowPointsCount) + '\n'
+        Infolinetxt=Infolinetxt+ "Dock points: " + str(mymower.dockPointsCount) + '\n'
+        Infolinetxt=Infolinetxt+ "Free points: " + str(mymower.freePointsCount) + '\n'
+        Infolinetxt=Infolinetxt+ "File CRC: " + str(mymower.fileMapCRC) + '\n'
+        MapsInfoline1.configure(text=Infolinetxt)
         plot()
         toolbar = VerticalNavigationToolbar2Tk(canvas[mymower.mapSelected], MapsPage)
-        toolbar.update()
+        #toolbar.update()
         toolbar.place(x=5,y=40)
+        
+    else:
+        Infolinetxt=""
+        MapsInfoline1.configure(text=Infolinetxt)
 
+def delete_map():
+     
+    returnval=messagebox.askyesno('Info',"Do you want to remove the MAP"+"{0:0>2}".format(mymower.mapSelected))
+    if returnval :
+        dir_path=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)
+        try:
+            for filepath in os.listdir(dir_path):
+                os.remove(dir_path +  "/{}".format(filepath))
+            os.rmdir(dir_path)
+        except:
+            print("no file")
 
-def export_map_from_mower():#load the active map locate into mower see decode AT message on RP
+        #update the main CRC datalist according to map nr
+        fileName=cwd + "/crcMapList.npy"
+        if (os.path.exists(fileName)):
+            crcMapList=np.load(fileName)
+            print("/crcMapList.npy")
+            print(crcMapList)
+            find_row=np.where(crcMapList[:,0] == mymower.mapSelected)
+            result=crcMapList[find_row]             
+            if (result.size != 0):                                                  
+                    if (result[0,0]==mymower.mapSelected):                    
+                        crcMapList = np.delete(crcMapList, (find_row), axis=0)
+                        print("new")
+                        print(crcMapList)
+                        np.save(fileName, crcMapList, allow_pickle=True, fix_imports=True)
+                    else:
+                        print("Error into crcMaplist")
+                
+
+            else:
+                print("Map not present into crcMaplist")
+                
+        else:
+            print("error no crcMaplist")
+            
+        consoleInsertText("Map " +"{0:0>2}".format(mymower.mapSelected) + ' is remove from Pi \n')   
+        messagebox.showinfo('info',"Map " +"{0:0>2}".format(mymower.mapSelected) + ' is remove from Pi')
+        print(mymower.mapSelected)
+        mymower.mapCRC=0
+        ax[mymower.mapSelected].clear()
+        fig[mymower.mapSelected].clear()
+        canvas[mymower.mapSelected].draw()
+        #onTabChange(mymower.mapSelected)
+        #mymower.mapSelected=0
+        
+def wait_the_feedBack():
+    mymower.isSendindMap=True
+    while (mymower.isSendindMap):
+        time.sleep(0.1)
+        
+        print(" wait feed back \n" )
+        if (Due_Serial.inWaiting() != 0) :
+            mymower.dueSerialReceived=Due_Serial.readline()
+            if str(mymower.dueSerialReceived)!="b''":
+                mymower.dueSerialReceived = mymower.dueSerialReceived.decode('utf-8', errors='ignore')
+                if mymower.dueSerialReceived[:1] != '$' : #it is console message because the first digit is not $
+                    if(len(mymower.dueSerialReceived))>2:
+                        #consoleInsertText(mymower.dueSerialReceived)
+                        decode_AT_message(mymower.dueSerialReceived)
+                else :
+                    consoleInsertText("recu sentense starting by $ "+ '\n')
+                    consoleInsertText(mymower.dueSerialReceived)
+                    
+
+def ButtonExportMap_click():
     returnval=messagebox.askyesno('Info',"You are going to replace the MAP locate into mower by this one")
-  
+    if (returnval):
+        export_map_to_mower(mymower.House,mymower.mapSelected)
     
+    
+def export_map_to_mower(House,mapNr):#load the active map locate into mower see decode AT message on RP
+    if(mapNr == 0):
+        print("map 0 can't be exported to mower")
+        return
+    mymower.House=House
+    mymower.mapSelected=mapNr
+
+    #read the main data of the map
+
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/MAIN.npy"      
+    if (os.path.exists(fileName)):
+        maindata=np.load(fileName)
+        mymower.perimeterPointsCount=int(maindata[0])
+        mymower.exclusionPointsCount=int(maindata[1])
+        mymower.dockPointsCount=int(maindata[2])
+        mymower.mowPointsCount=int(maindata[3])
+        mymower.freePointsCount=int(maindata[4])
+        mymower.nbTotalExclusion=int(maindata[5])
+        mymower.fileMapCRC=int(maindata[6])
+    else:
+        print("Error can't find the main data for this map " + str(mapNr))
+        return
+
+    mymower.isSendindMap=True
+    mymower.startMowPointIdx=0
+
+    #part 1 AT+W map data waypoint
+   # mymower.focusOnPage=4
+   # ConsolePage.tkraise()
+    trame_size=30
+    pt=0
+    pt_total=0
+    crc_point=0
+    
+    ################ perimeter
+    print("perimeter")
+    crc_perimeter=0
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                      "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/PERIMETER.npy"
+    if (os.path.exists(fileName)):
+        crc_perimeter=0
+        perimeterPts=np.load(fileName)
+        perimeterPts_count=int(len(perimeterPts))
+        if((mymower.perimeterPointsCount)!=perimeterPts_count):
+            print("Error in the perimeter point count")
+        else:
+            print("Nb_point : " , perimeterPts_count)
+
+        
+        toSend="AT+W,0,"
+                        
+        for ip in range(int(len(perimeterPts))):
+            toSend=toSend+str(perimeterPts[ip][0])+","+str(perimeterPts[ip][1])+","
+            crc_perimeter=crc_perimeter + int(100*(perimeterPts[ip][0])) + int(100*(perimeterPts[ip][1]))
+            pt=pt+1
+            pt_total=pt_total+1
+            if (pt>=trame_size) :
+                toSend=toSend + '\r'
+                print(toSend)
+                consoleInsertText(" Send " + toSend )
+                send_serial_message(toSend)
+                wait_the_feedBack()
+                #prepare the new sentence
+                toSend="AT+W,"+str(pt_total) +","                        
+                pt=0
+                #crc_point=0
+    else:
+        messagebox.showwarning('warning',"No perimeter for this map ???")
+    consoleInsertText("Perimeter points send finish CRC: " + str(crc_perimeter) + '\n')
+    print("fin de perimeter")
+
+    ################ exclusion
+    print("exclusion")
+    crc_exclusion=0
+    for mymower.exclusionNr in range(int(mymower.nbTotalExclusion)):
+        print("exclusion : " +str(mymower.exclusionNr))
+        fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                      "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/EXCLUSION"+"{0:0>2}".format(mymower.exclusionNr)+".npy"
+          
+        if (os.path.exists(fileName)):
+            crc_exclusion=0
+            exclusionPts=np.load(fileName)
+        
+            for ip in range(int(len(exclusionPts))):
+                toSend=toSend+str(exclusionPts[ip][0])+","+str(exclusionPts[ip][1])+","
+                crc_exclusion=crc_exclusion + int(100*(exclusionPts[ip][0])) + int(100*(exclusionPts[ip][1]))
+                pt=pt+1
+                pt_total=pt_total+1
+                if (pt>=trame_size) :
+                    toSend=toSend + '\r'
+                    print(toSend)
+                    send_serial_message(toSend)
+                    time.sleep(1)
+                    checkSerial()
+                    #prepare the new sentence
+                    toSend="AT+W,"+str(pt_total) +","                        
+                    pt=0
+                    
+                
+        else:
+            messagebox.showwarning('warning',"No exclusion for this map ???")
+            
+        consoleInsertText("Exclusion points send finish CRC: " + str(crc_exclusion) + '\n')
+    print("fin de exclusion")
+
+    ################ dock
+    print("Dock")
+    crc_dock=0
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                      "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/DOCK.npy"
+    if (os.path.exists(fileName)):
+        
+        dockPts=np.load(fileName)
+        #print(dockPts)
+        dockPts_count=int(len(dockPts))
+        if((mymower.dockPointsCount)!=dockPts_count):
+            print("Error in the dock point count")
+        else:
+            print("Nb_point : " , dockPts_count)
+        
+        for ip in range(int(len(dockPts))):
+            toSend=toSend+str(dockPts[ip][0])+","+str(dockPts[ip][1])+","
+            crc_dock=crc_dock + int(100*(dockPts[ip][0])) + int(100*(dockPts[ip][1]))
+            
+            pt=pt+1
+            pt_total=pt_total+1
+            if (pt>=trame_size) :
+                toSend=toSend + '\r'
+                print(toSend)
+                send_serial_message(toSend)
+                #prepare the new sentence
+                toSend="AT+W,"+str(pt_total) +","
+                pt=0
+                
+        
+   
+
+    print("fin de dock")
+    consoleInsertText("Dock points send finish CRC: " + str(crc_dock) + '\n')  
+
     
 
-def import_map_from_mower():#load the active map locate into mower see decode AT message on RP
+    ################ mow
+    print("Mow")
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                      "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/MOW.npy"
+    if (os.path.exists(fileName)):
+        crc_mow=0
+        mowPts=np.load(fileName)
+        #mowPts = mowPts1.astype(float)
+        mowPts_count=int(len(mowPts))
+        mymower.stopMowPointIdx=mowPts_count
+        tk_labelStopIdx.set(mymower.stopMowPointIdx)
+        if((mymower.mowPointsCount)!=mowPts_count):
+            print("Error in the mow point count")
+        else:
+            print("Nb_point : " , mowPts_count)
+
+        for ip in range(int(len(mowPts))):
+            toSend=toSend+str(mowPts[ip][0])+","+str(mowPts[ip][1])+","
+            crc_mow=crc_mow + int(100*(mowPts[ip][0])) + int(100*(mowPts[ip][1]))
+            pt=pt+1
+            pt_total=pt_total+1
+            if (pt>=trame_size) :
+                print(toSend)
+                toSend=toSend + '\r\n'
+                send_serial_message(toSend)
+                
+                wait_the_feedBack()
+                
+                #prepare the new sentence
+                toSend="AT+W,"+str(pt_total) +","
+                pt=0
+                
+                
+        
+            
+    else:
+        messagebox.showwarning('warning',"No mowing points for this map ???")
+    print("fin de mow")
+    consoleInsertText("Mow points send finish CRC: " + str(crc_mow) + '\n')   
+
+
+
+        
+    ################ free
+    
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                      "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/FREE.npy"
+    if (os.path.exists(fileName)):
+        crc_free=0
+        freePts=np.load(fileName)
+        for ip in range(int(len(freePts))):
+            toSend=toSend+str(freePts[ip][0])+","+str(freePts[ip][1])+","
+            crc_free=crc_free + int(100*(freePts[ip][0])) + int(100*(freePts[ip][1]))
+            pt=pt+1
+            pt_total=pt_total+1
+            if (pt>=trame_size) :
+                print(toSend)
+                toSend=toSend + '\r'
+                send_serial_message(toSend)
+                wait_the_feedBack()
+                #prepare the new sentence
+                toSend="AT+W,"+str(pt_total) +","
+                pt=0
+                
+    else:
+        messagebox.showwarning('warning',"No free points for this map ???")
+    print("fin de free")
+    consoleInsertText("Free points send finish CRC: " + str(crc_free) + '\n')   
+
+    if (toSend != ("AT+W,"+str(pt_total) +",")):
+            print ("reste final")
+            print(toSend)
+            toSend=toSend + '\r'
+            send_serial_message(toSend)
+            pt=0
+            
+
+
+    #part 2  : AT+N  points description
+
+    
+    
+    
+    toSend="AT+N,"+str(mymower.perimeterPointsCount)+"," + str(mymower.exclusionPointsCount)
+    toSend=toSend + "," + str(mymower.dockPointsCount) + "," + str(mymower.mowPointsCount)
+    toSend=toSend + "," + str(mymower.freePointsCount) + "," + str(crc_point)
+    #print(toSend)
+    toSend=toSend + '\r'
+    send_serial_message(toSend)
+    consoleInsertText("Points description send finish " + '\n')   
+
+    #part 3  : AT+X  exclusion description
+    mymower.exclusionNr=0
+    toSend="AT+X,0,"
+    for mymower.exclusionNr in range(int(mymower.nbTotalExclusion)):
+        
+        #fileName=cwd + "/maps/EXCLUSION"+(f"{mymower.mapSelected:02d}")+(f"{mymower.exclusionNr:02d}")+".npy"
+        fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                      "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/EXCLUSION"+"{0:0>2}".format(mymower.exclusionNr)+".npy"
+          
+        if (os.path.exists(fileName)):
+            exclusion_NP=np.load(fileName)
+            toSend=toSend+str(len(exclusion_NP))+","
+
+    #print (toSend)
+    toSend=toSend + '\r'
+    send_serial_message(toSend)
+    consoleInsertText("Exclusion description send finish " + '\n')
+
+    crc_point=float(crc_perimeter) + float(crc_exclusion) + float(crc_dock) + float(crc_mow) + float(crc_free)
+    consoleInsertText(str(float(crc_point)) + '\n')
+    print("crc_perimeter ",crc_perimeter)
+    print("crc_exclusion ",crc_exclusion)
+    print("crc_dock ",crc_dock)
+    print("crc_mow ",crc_mow)
+    print("crc_free ",crc_free)
+    print("CRC MAP ",crc_point)
+
+    tk_labelStartIdx.set(0)
+    
+
+    mymower.isSendindMap=False
+    
+    
+#load the active map locate into mower and save it on pi SD see decode AT message on RN response
+def import_map_from_mower():
     returnval=messagebox.askyesno('Info',"You are going to replace the actual MAP"+str(mymower.mapSelected)+" by the one locate in the mower")
     if returnval :
         message="AT+RN"
@@ -3825,35 +3394,43 @@ def import_map_from_mower():#load the active map locate into mower see decode AT
     
     
 def plot():
+    print("PLOT CRC LIST")
     ax[mymower.mapSelected].clear()
-    mymower.plotMapCRC=0
+    #fig[mymower.mapSelected].clear()
+    perimeterCRC=0
 
     #draw perimeter
-    fileName=cwd + "/maps/PERIMETER"+str(mymower.mapSelected)+".npy"
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/PERIMETER.npy"
+
     
     if (os.path.exists(fileName)):
         perimeter=np.load(fileName)
-        
         x_lon = np.zeros(int(len(perimeter)+1))
         y_lat = np.zeros(int(len(perimeter)+1))
         for ip in range(int(len(perimeter))):
                     x_lon[ip] = perimeter[ip][0]
                     y_lat[ip] = perimeter[ip][1]
-                    mymower.plotMapCRC=mymower.plotMapCRC+100*x_lon[ip]+100*y_lat[ip]
+                    perimeterCRC=perimeterCRC + int(100*x_lon[ip]) + int(100*y_lat[ip])
                   
         #close the drawing
         x_lon[ip+1] = perimeter[0][0]
         y_lat[ip+1] = perimeter[0][1]
-        #mymower.plotMapCRC=mymower.plotMapCRC+100*x_lon[ip+1]+100*y_lat[ip+1]           
         ax[mymower.mapSelected].plot(x_lon,y_lat, color='r', linewidth=0.4,marker='.',markersize=2)
-        #ax[mymower.mapSelected].subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
-   
-        canvas[mymower.mapSelected].draw()
+        fig[mymower.mapSelected].subplots_adjust(left=0, right=1, top=1, bottom=0)
+   #fig[uu],ax[uu]=plt.subplots()
+        #canvas[mymower.mapSelected].draw()
     else:
         messagebox.showwarning('warning',"No perimeter for this map ???")
 
+    
+    print("perimeterCRC ",perimeterCRC)
+
     #draw mow    
-    fileName=cwd + "/maps/MOW"+str(mymower.mapSelected)+".npy"
+    mowCRC=0
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/MOW.npy"
+
     if (os.path.exists(fileName)):
         mowPts=np.load(fileName)
         x_lon = np.zeros(int(len(mowPts)))
@@ -3861,59 +3438,68 @@ def plot():
         for ip in range(int(len(mowPts))):
                     x_lon[ip] = mowPts[ip][0]
                     y_lat[ip] = mowPts[ip][1]
-                    mymower.plotMapCRC=mymower.plotMapCRC+100*x_lon[ip]+100*y_lat[ip] 
-        ax[mymower.mapSelected].plot(x_lon,y_lat, color='g', linewidth=0.4)
-        canvas[mymower.mapSelected].draw()
+                    mowCRC=mowCRC+int(100*x_lon[ip])+int(100*y_lat[ip])
+        ax[mymower.mapSelected].plot(x_lon,y_lat, color='g', linewidth=0.2)
+        #canvas[mymower.mapSelected].draw()
     else:
         messagebox.showwarning('warning',"No mowing points for this map ?????")
 
-
+    print ("mowCRC ",mowCRC)
+    
     #draw exclusion
+    exclusionCRC=0
     for mymower.exclusionNr in range(int(mymower.nbTotalExclusion)):
-        fileName=cwd + "/maps/EXCLUSION"+(f"{mymower.mapSelected:02d}")+(f"{mymower.exclusionNr:02d}")+".npy"
+        fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/EXCLUSION"+"{0:0>2}".format(mymower.exclusionNr)+".npy"
+              
         if (os.path.exists(fileName)):
             mowPts=np.load(fileName)
             x_lon = np.zeros(int(len(mowPts)+1))
             y_lat = np.zeros(int(len(mowPts)+1))
-            for ip in range(int(len(mowPts))):
+            if (int(len(mowPts)) >=3):
+                for ip in range(int(len(mowPts))):
                     x_lon[ip] = mowPts[ip][0]
                     y_lat[ip] = mowPts[ip][1]
-                    mymower.plotMapCRC=mymower.plotMapCRC+100*x_lon[ip]+100*y_lat[ip] 
-            #close the drawing
-            x_lon[ip+1] = mowPts[0][0]
-            y_lat[ip+1] = mowPts[0][1]
-            #mymower.plotMapCRC=mymower.plotMapCRC+100*x_lon[ip+1]+100*y_lat[ip+1] 
-            ax[mymower.mapSelected].plot(x_lon,y_lat, color='r', linewidth=1)
-            canvas[mymower.mapSelected].draw()
+                    exclusionCRC=exclusionCRC+int(100*x_lon[ip])+int(100*y_lat[ip]) 
+                #close the drawing
+                x_lon[ip+1] = mowPts[0][0]
+                y_lat[ip+1] = mowPts[0][1]
+             
+                ax[mymower.mapSelected].plot(x_lon,y_lat, color='r', linewidth=1)
+            #canvas[mymower.mapSelected].draw()
         else:
             messagebox.showwarning('warning',"No exclusion points for this map ?????")
+    print("exclusionCRC ",exclusionCRC)
+    
+    #draw dock
+    dockCRC=0
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/DOCK.npy"
 
-    #draw dock  
-    fileName=cwd + "/maps/DOCKING"+str(mymower.mapSelected)+".npy"
     if (os.path.exists(fileName)):
         mowPts=np.load(fileName)
+        print(mowPts)
         x_lon = np.zeros(int(len(mowPts)))
         y_lat = np.zeros(int(len(mowPts)))
         for ip in range(int(len(mowPts))):
                     x_lon[ip] = mowPts[ip][0]
                     y_lat[ip] = mowPts[ip][1]
-                    mymower.plotMapCRC=mymower.plotMapCRC+100*x_lon[ip]+100*y_lat[ip] 
-        ax[mymower.mapSelected].plot(x_lon,y_lat, color='b', linewidth=0.4)
-        canvas[mymower.mapSelected].draw()
+                    dockCRC=dockCRC+int(100*x_lon[ip])+int(100*y_lat[ip])
+        ax[mymower.mapSelected].plot(x_lon,y_lat, color='b', linewidth=0.6)
+        #canvas[mymower.mapSelected].draw()
     else:
         messagebox.showwarning('warning',"No dock points for this map ?????")
 
 
+    print("dockCRC " , dockCRC)
+    mymower.plotMapCRC=perimeterCRC+mowCRC+dockCRC+exclusionCRC
+    ctrl=int(mymower.plotMapCRC)-int(mymower.fileMapCRC)
+    if (abs(ctrl)>mymower.mapCrcRoundingRange):
+        messagebox.showwarning('warning',"Issue into map file Try to import again this map PlotCRC / SunrayCRC : " + str(mymower.plotMapCRC) + " / " + str(mymower.fileMapCRC))
 
+#end of plot
 
-    if (int(mymower.plotMapCRC) != int(mymower.fileMapCRC)):
-        messagebox.showwarning('warning',"Issue into map file Try to import again this map : " + str(mymower.plotMapCRC) + " / " + str(mymower.fileMapCRC))
-        
-fig=[FigureCanvasTkAgg]*10
-ax =[plt]*10
-toolbar=[None]*10
-for uu in range (10):
-    fig[uu],ax[uu]=plt.subplots()
+ 
     # ax[mymower.mapSelected].set_xlabel('xlabel', fontsize=8)
        # ax[mymower.mapSelected].set_ylabel('ylabel', fontsize=8)
     #ax[uu].rcParams({'font.size': 22})
@@ -3921,33 +3507,42 @@ for uu in range (10):
     #ax[uu].axis('off')
     #ax[uu].subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
     #fig[uu](figsize=(8, 6), dpi=80)
-    
-  
-MapsPage =ttk.Notebook(fen1)
-FrameStreamVideo= [None]*10
-canvas = [None]*10
+    canvas[mymower.mapSelected].draw()
 
-for i in range(10):
+        
+fig=[FigureCanvasTkAgg]*max_map_inUse
+ax =[plt]*max_map_inUse
+toolbar=[None]*max_map_inUse
+for uu in range (max_map_inUse):
+    fig[uu],ax[uu]=plt.subplots()
+    
+MapsPage =ttk.Notebook(fen1)
+FrameStreamVideo= [None]*max_map_inUse
+canvas = [None]*max_map_inUse
+
+for i in range(max_map_inUse):
     FrameStreamVideo[i] = tk.Frame(MapsPage,borderwidth="1",relief=tk.SOLID)
     canvas[i] = FigureCanvasTkAgg(fig[i],master=FrameStreamVideo[i])
-    canvas[i].get_tk_widget().place(x=100,y=5,width=350, height=350)
-    MapsPage.add(FrameStreamVideo[i],text="Map "+str(i))
+    canvas[i].get_tk_widget().place(x=60,y=5,width=350, height=350)
+    MapsPage.add(FrameStreamVideo[i],text=str(i))
 
 
 MapsPage.place(x=0, y=0, height=400, width=800)
-MapsPage.bind("<ButtonRelease-1>", onTabChange)
-            
-##toolbar=NavigationToolbar2Tk(canvas,FrameStreamVideo,pack_toolbar=False)
-##toolbar.update()
-##toolbar.place(x=0,y=80)
+MapsPage.bind("<<NotebookTabChanged>>", onTabChange)
+#MapsPage.bind("<ButtonRelease-1>", onTabChange)
 
-ButtonExportMap = tk.Button(MapsPage,text="EXPORT TO ROBOT", wraplength=80,  command = export_map_from_mower)
-ButtonExportMap.place(x=680,y=80,height=80, width=120)
+MapsInfoline1 = tk.Label(MapsPage, text="Info maps")
+MapsInfoline1.place(x=420,y=70, height=300, width=150)
+ButtonDeleteMap = tk.Button(MapsPage,text="Delete This Map", wraplength=80,  command = delete_map)
+ButtonDeleteMap.place(x=680,y=5,height=60, width=110)
+
+ButtonExportMap = tk.Button(MapsPage,text="EXPORT TO ROBOT", wraplength=80,  command = ButtonExportMap_click)
+ButtonExportMap.place(x=680,y=80,height=60, width=110)
 
 ButtonImportMap = tk.Button(MapsPage,text="IMPORT FROM ROBOT", wraplength=80,  command = import_map_from_mower)
-ButtonImportMap.place(x=680,y=180,height=80, width=120)
+ButtonImportMap.place(x=680,y=180,height=60, width=110)
 ButtonBackHome = tk.Button(MapsPage, image=imgBack, command = ButtonBackToMain_click)
-ButtonBackHome.place(x=680, y=280, height=120, width=120)
+ButtonBackHome.place(x=680, y=280, height=119, width=115)
 ##
 ##for i in range(10):
 ##    mymower.mapSelected=i
@@ -4258,7 +3853,18 @@ def ButtonOdo10TurnFw_click():
     ConsolePage.tkraise()
     fen1.update()
     
-
+def ButtonFanStart_click():
+    message="AT+E4"
+    message=str(message)
+    message=message + '\r'
+    send_serial_message(message)
+    
+def ButtonFanStop_click():
+    message="AT+E5"
+    message=str(message)
+    message=message + '\r'
+    send_serial_message(message)
+    
     
     
 ##def ButtonOdo1TurnRev_click():
@@ -4303,10 +3909,14 @@ ButtonOdo10TurnFw.configure(command = ButtonOdo10TurnFw_click)
 ButtonOdo10TurnFw.configure(text="TEST 10 Turn")
 
 
-##ButtonOdo1TurnRev = tk.Button(TestPage)
-##ButtonOdo1TurnRev.place(x=30,y=115, height=25, width=200)
-##ButtonOdo1TurnRev.configure(command = ButtonOdo1TurnRev_click)
-##ButtonOdo1TurnRev.configure(text="Reverse 1 Turn")
+ButtonFanStart = tk.Button(TestPage)
+ButtonFanStart.place(x=300,y=115, height=25, width=200)
+ButtonFanStart.configure(command = ButtonFanStart_click)
+ButtonFanStart.configure(text="Start Fan")
+ButtonFanStop = tk.Button(TestPage)
+ButtonFanStop.place(x=300,y=150, height=25, width=200)
+ButtonFanStop.configure(command = ButtonFanStop_click)
+ButtonFanStop.configure(text="Stop Fan")
 
 ##ButtonOdo5TurnRev= tk.Button(TestPage)
 ##ButtonOdo5TurnRev.place(x=30,y=165, height=25, width=200)
@@ -4705,6 +4315,7 @@ Buttonimgardu.place(x=10,y=280,height=120,width=650)
 
 Datetext = tk.Label(MainPage, text='',textvariable=tk_date_Now,font=("Arial", 20), fg='red')
 Datetext.place(x=10,y=400, height=25, width=240)
+
 Statustext = tk.Label(MainPage, text='',textvariable=tk_MainStatusLine,font=("Arial", 20), fg='red')
 Statustext.place(x=240,y=400, height=25, width=400)
 
@@ -4744,6 +4355,10 @@ def kbd_downKey(e) :
     if (page_list[mymower.focusOnPage]=="MANUAL") & (ManualKeyboardUse.get()==1):
         ButtonStop_click()    
 
+
+
+
+
 fen1.bind("<KeyPress>", check_keyboard)
 fen1.bind('<Left>', kbd_leftKey)
 fen1.bind('<Right>', kbd_rightKey)
@@ -4751,34 +4366,24 @@ fen1.bind('<Up>', kbd_upKey)
 fen1.bind('<Down>', kbd_downKey)
 fen1.bind('<space>', kbd_spaceKey)
 
+##mymower.focusOnPage=1
+##AutoPage.tkraise()
+#fen1.wm_attributes("-transparentcolor", 'grey')
 
 
 
-
-checkSerial()
 #on startup PI update Date time from Internet
 #subprocess.Popen("sudo systemctl stop ntp.service", shell=True)
 #subprocess.Popen("sudo systemctl disable ntp.service", shell=True)
 #time.sleep(10)
 
 
-##consoleInsertText('Read Setting from PCB1.3'+ '\n')
-##read_all_setting()
-##consoleInsertText('Read Area In Mowing from PCB1.3'+ '\n')
-##send_req_message('PERI','1000','1','1','0','0','0',)
-##if(useMqtt):
-##    consoleInsertText('Wait update Date/Time from internet'+ '\n')
-##    consoleInsertText('Initial start MQTT after 10 secondes'+ '\n')
-##    mymower.timeToReconnectMqtt=time.time()+10
-##
-##consoleInsertText('Control PI time and PCB1.3 time'+ '\n')
-##read_time_setting()
-##ButtonAuto_click()
-##BtnGpsRecordStop_click()
+
+
 ##
 ##if (streamVideoOnPower):
 ##    BtnStreamVideoStart_click()
-
+checkSerial()
 fen1.mainloop()
 
 

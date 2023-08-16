@@ -31,6 +31,7 @@ class Motor {
     bool motorMowOverload; 
     bool tractionMotorsEnabled;       
     bool enableMowMotor;
+    bool motorMowForwardSet; 
     bool odometryError;    
     unsigned long motorOverloadDuration; // accumulated duration (ms)
     int  pwmMax;
@@ -41,7 +42,7 @@ class Motor {
     bool pwmSpeedCurveDetection;
     long motorLeftTicks;
     long motorRightTicks;
-    long motorMowTicks;    
+    unsigned long motorMowTicks;    
     float linearSpeedSet; // m/s
     float angularSpeedSet; // rad/s
     float motorLeftSense; // left motor current (amps)
@@ -58,13 +59,14 @@ class Motor {
     void begin();
     void run();      
     void test();
-     //bber
+     //bber100
     void rollTest();
     void distanceTest();
     void plot();
     void enableTractionMotors(bool enable);
     void setLinearAngularSpeed(float linear, float angular, bool useLinearRamp = true);
     void setMowState(bool switchOn);   
+    void setMowMaxPwm( int val );
     void stopImmediately(bool includeMowerMotor);
   protected: 
     float motorLeftRpmSet; // set speed
@@ -77,7 +79,6 @@ class Motor {
     float motorMowRpmCurrLP;    
     float motorLeftRpmLast;
     float motorRightRpmLast;
-    bool motorMowForwardSet; 
     float motorMowPWMSet;  
     float motorMowPWMCurr; 
     int motorLeftPWMCurr;

@@ -12,6 +12,7 @@
 
 class Battery {
   public:
+    bool docked;    // robot in docking?
     bool batMonitor;
     float batGoHomeIfBelow;
     float batFullVoltage;
@@ -28,8 +29,11 @@ class Battery {
     bool chargingEnabled;
     int chargingCompletedDelay; // ensure that loadingcurrent or loadingvoltage triggers 'chargingCompleted' condition for a longer period
     bool chargingCompleted;
+    unsigned long startChargingIfBelow;
 	  void begin();            
     void run();	  
+    void setIsDocked(bool state);
+    bool isDocked();
 	  bool chargerConnected();
     bool badChargerContact();
     void enableCharging(bool flag);   	      
@@ -39,6 +43,7 @@ class Battery {
     void resetIdle();
     void switchOff();
   protected:       
+    int batteryVoltageSlopeLowCounter;
     int startupPhase;    
     unsigned long nextBatteryTime ;
     bool switchOffByOperator;    
