@@ -180,19 +180,22 @@ class robot:
         
         #timer
         self.timerUse=0
-        self.Timeractive=[0]*5
-        self.TimerstartTime_hour=[0]*5
-        self.TimerstartTime_minute=[0]*5
-        self.TimerstopTime_hour=[0]*5
-        self.TimerstopTime_minute=[0]*5
-        self.TimerdaysOfWeek=[0]*5
-        self.TimerstartDistance=[0]*5
-        self.TimerstartBeacon=[0]*5
-        self.TimerstartMowPattern=[0]*5
-        self.TimerstartNrLane=[0]*5
-        self.TimerstartRollDir=[0]*5
-        self.TimerstartLaneMaxlengh=[0]*5
-        self.TimerstartArea=[0]*5
+        self.Timeractive=[0]*15
+        self.TimerstartTime_hour=[0]*15
+        self.TimerstartTime_minute=[0]*15
+        self.TimerstopTime_hour=[0]*15
+        self.TimerstopTime_minute=[0]*15
+        self.TimerdaysOfWeek=[0]*15
+        self.TimerstartDistance=[0]*15
+        self.TimerstartBeacon=[0]*15
+        self.TimerstartMowPattern=[0]*15
+        self.TimerstartNrLane=[0]*15
+        self.TimerstartRollDir=[0]*15
+        self.TimerstartLaneMaxlengh=[0]*15
+        self.TimerstartArea=[0]*15
+
+        self.TimerstartHouse=[0]*15
+        self.TimerstartMap=[0]*15
         
         #station
         self.stationRevDist=0
