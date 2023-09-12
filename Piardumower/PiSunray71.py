@@ -1,6 +1,6 @@
 ###!/usr/bin/env python3
 
-PiVersion="69"
+PiVersion="71"
 from pathlib import Path
 import traceback
 import sys
@@ -59,8 +59,8 @@ from config import visionDetectMinScore
 from config import max_map_inUse
 
 #Show video in tkinter canvas but very slow
-if(useVision):
-    from PIL import Image,ImageTk
+#if(useVision):
+from PIL import Image,ImageTk
 
 import threading
 
@@ -424,7 +424,7 @@ class mower:
 
         self.startPiArduTime=time.time()
         self.map=[0]*30  #need bigger ??
-        self.mapSelected = 0
+        self.mapSelected = 1
         self.finishedUploadingMap=False
         self.nbTotalExclusion=3
         self.ActiveMapX = []
@@ -704,7 +704,7 @@ def decode_AT_message(message):  #decode sunray console message
             if message[:2] =='W,':
                 know_message=True
                 print(str(message))
-                consoleInsertText(str(message) + '\n')
+                #consoleInsertText(str(message) + '\n')
                 mymower.isSendindMap=False
                 
 
@@ -1406,7 +1406,8 @@ def ButtonCamera_click():
 def ButtonMaps_click():
     mymower.focusOnPage=9
     MapsPage.tkraise()
-    MapsPage.select(mymower.mapSelected)
+    MapsPage.select(0)
+    #MapsPage.select(mymower.mapSelected)
 
 def ButtonSchedule_click():
     mymower.focusOnPage=7
@@ -1630,7 +1631,8 @@ imgJoystickOFF=tk.PhotoImage(file=cwd + "/icons/joystick_off.png")
 imgJoystick=tk.PhotoImage(file=cwd + "/icons/joystick.png")
 imgMaps=tk.PhotoImage(file=cwd + "/icons/map.png")
 
-
+imgHouseMap0=tk.PhotoImage(file=cwd + "/House00/fullHouseMap.png")
+imgHouseNoMap=tk.PhotoImage(file=cwd + "/icons/map.png")
 
 
 
@@ -2388,15 +2390,17 @@ def initialPlotAutoPageFullHouse():
                     messagebox.showwarning('warning',"No mowing points for this map ?????")
 
                 
-                
+        tk_AutoInfoMap.set("House " + "{0:0>2}".format(mymower.House) + " Total Area " +str(mymower.totalMowingArea)+ " m2")      
 
     else:
+        tk_AutoInfoMap.set("House " + "{0:0>2}".format(mymower.House) + " NO MAP ") 
+        
         print("error no crcMapList.npy for this house")
 
    
     canvasLiveMap.draw()
     #print(mymower.totalMowingArea)
-    tk_AutoInfoMap.set("House " + "{0:0>2}".format(mymower.House) + " Total Area " +str(mymower.totalMowingArea)+ " m2")
+    
 
 
 
@@ -2976,10 +2980,119 @@ ButtonBackHome.place(x=680, y=280, height=120, width=120)
 
 
 """ THE MAPS PAGE ***************************************************"""
+def showFullMapTab():
 
+   
+    
+    ax[0].clear()
+    fileName=cwd + "/House" + "{0:0>2}".format(mymower.House)+"/crcMapList.npy"
+    mymower.totalMowingArea=0
+    if (os.path.exists(fileName)):
+        crcMapList=np.load(fileName)
+        
+        for idx in range(int(len(crcMapList))):
+            mapNr=int(crcMapList[idx,0])
+           
+            
+            fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mapNr)+"/PERIMETER.npy"
+            if (os.path.exists(fileName)):
+                perimeterArray=np.load(fileName)
+                polygon1 = Polygon(np.squeeze(perimeterArray))
+                mymower.polygon[mapNr] = polygon1 #keep the polygon for later search
+                mymower.totalMowingArea=mymower.totalMowingArea+int(polygon1.area)                #print(polygon1.centroid.coords[0][0]) center of polygon
+                #draw perimeter
+                x = np.zeros(int(len(perimeterArray)+1))
+                y = np.zeros(int(len(perimeterArray)+1))
+                for idx1 in range(int(len(perimeterArray))):
+                    x[idx1] = perimeterArray[idx1][0]
+                    y[idx1] = perimeterArray[idx1][1]       
+                      #close the drawing
+                x[idx1+1] = perimeterArray[0][0]
+                y[idx1+1] = perimeterArray[0][1]
+                ax[0].text(polygon1.centroid.coords[0][0], polygon1.centroid.coords[0][1], mapNr, fontsize=8, bbox=dict(facecolor='yellow', alpha=0.4))
+                ax[0].plot(x,y, color='r', linewidth=0.4)#,marker='.',markersize=2)
+ 
+            else:
+                print("no perimeter data for this map "+str(mapNr))
+
+       
+        
+            #draw exclusion
+
+            fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mapNr)+"/MAIN.npy"
+            nbTotalExclusion1=0
+    
+            if (os.path.exists(fileName)):
+                maindata1=np.load(fileName)
+                nbTotalExclusion1=int(maindata1[5])
+                
+            else:
+                print("no main.npy for this house")
+
+                
+        
+            for mymower.exclusionNr in range(nbTotalExclusion1):
+                fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mapNr)+"/EXCLUSION"+"{0:0>2}".format(mymower.exclusionNr)+".npy"
+              
+                if (os.path.exists(fileName)):
+                    excluPts=np.load(fileName)
+                    polygon1 = Polygon(np.squeeze(excluPts))
+                    #mymower.polygon[mapNr] = polygon1 #keep the polygon for later search
+                    mymower.totalMowingArea=mymower.totalMowingArea-int(polygon1.area) 
+                    x_lon = np.zeros(int(len(excluPts)+1))
+                    y_lat = np.zeros(int(len(excluPts)+1))
+                    if (int(len(excluPts)) >=3):
+                        for ip in range(int(len(excluPts))):
+                            x_lon[ip] = excluPts[ip][0]
+                            y_lat[ip] = excluPts[ip][1]
+                        x_lon[ip+1] = excluPts[0][0]
+                        y_lat[ip+1] = excluPts[0][1]
+                    ax[0].plot(x_lon,y_lat, color='r', linewidth=1)
+            
+                else:
+                    messagebox.showwarning('warning',"No exclusion points for this map ?????")
+             #draw dock
+            dockCRC=0
+            fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                          "/maps"+"{0:0>2}".format(mapNr)+"/DOCK.npy"
+            if (os.path.exists(fileName)):
+                dockPts=np.load(fileName)
+                x_lon = np.zeros(int(len(dockPts)))
+                y_lat = np.zeros(int(len(dockPts)))
+                for ip in range(int(len(dockPts))):
+                    x_lon[ip] = dockPts[ip][0]
+                    y_lat[ip] = dockPts[ip][1]
+                    
+                ax[0].plot(x_lon,y_lat, color='b', linewidth=0.6)
+        
+            else:
+                messagebox.showwarning('warning',"No dock points for this map ?????")
+                
+
+    else:
+        print("error no crcMapList.npy for this house")
+
+
+    canvas[0].draw()
+   
+    MapsInfoline1.configure(text=" Total Area " +str(mymower.totalMowingArea)+ " m2")
+##    InfoHouseNrtxt.configure(text=mymower.House)
+##    InfoHouseNrtxt.update()
+
+
+
+    
 
 def onTabChange(event):
+    print(event)
     mymower.mapSelected = int(MapsPage.index("current"))
+    if (mymower.mapSelected == 0):
+        showFullMapTab()
+        return
+
     fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
                           "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/MAIN.npy"      
     if (os.path.exists(fileName)):
@@ -3084,7 +3197,7 @@ def ButtonExportMap_click():
         export_map_to_mower(mymower.House,mymower.mapSelected)
     
     
-def export_map_to_mower(House,mapNr):#load the active map locate into mower see decode AT message on RP
+def export_map_to_mower(House,mapNr):#export the into mower see decode AT message on RP
     if(mapNr == 0):
         print("map 0 can't be exported to mower")
         return
@@ -3187,6 +3300,7 @@ def export_map_to_mower(House,mapNr):#load the active map locate into mower see 
             messagebox.showwarning('warning',"No exclusion for this map ???")
             
         consoleInsertText("Exclusion points send finish CRC: " + str(crc_exclusion) + '\n')
+    print (int(mymower.nbTotalExclusion))
     print("fin de exclusion")
 
     ################ dock
@@ -3324,7 +3438,6 @@ def export_map_to_mower(House,mapNr):#load the active map locate into mower see 
     toSend="AT+X,0,"
     for mymower.exclusionNr in range(int(mymower.nbTotalExclusion)):
         
-        #fileName=cwd + "/maps/EXCLUSION"+(f"{mymower.mapSelected:02d}")+(f"{mymower.exclusionNr:02d}")+".npy"
         fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
                       "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/EXCLUSION"+"{0:0>2}".format(mymower.exclusionNr)+".npy"
           
@@ -3490,14 +3603,17 @@ for uu in range (max_map_inUse):
     fig[uu],ax[uu]=plt.subplots()
     
 MapsPage =ttk.Notebook(fen1)
-FrameStreamVideo= [None]*max_map_inUse
+FrameMapsPage= [None]*max_map_inUse
 canvas = [None]*max_map_inUse
 
 for i in range(max_map_inUse):
-    FrameStreamVideo[i] = tk.Frame(MapsPage,borderwidth="1",relief=tk.SOLID)
-    canvas[i] = FigureCanvasTkAgg(fig[i],master=FrameStreamVideo[i])
+    FrameMapsPage[i] = tk.Frame(MapsPage,borderwidth="1",relief=tk.SOLID)
+    canvas[i] = FigureCanvasTkAgg(fig[i],master=FrameMapsPage[i])
     canvas[i].get_tk_widget().place(x=60,y=5,width=350, height=350)
-    MapsPage.add(FrameStreamVideo[i],text=str(i))
+    if (i==0) :
+        MapsPage.add(FrameMapsPage[i],text="House")
+    else:
+        MapsPage.add(FrameMapsPage[i],text=str(i))
 
 
 MapsPage.place(x=0, y=0, height=400, width=800)
@@ -3521,15 +3637,7 @@ ButtonImportMap = tk.Button(MapsPage,text="IMPORT FROM ROBOT", wraplength=80,  c
 ButtonImportMap.place(x=680,y=180,height=60, width=110)
 ButtonBackHome = tk.Button(MapsPage, image=imgBack, command = ButtonBackToMain_click)
 ButtonBackHome.place(x=680, y=280, height=119, width=115)
-##
-##for i in range(10):
-##    mymower.mapSelected=i
-##    print ("load map " + str(i))
-##    fileName=cwd + "/maps/PERIMETER"+str(mymower.mapSelected)+".npy"
-##    if (os.path.exists(fileName)):
-##        plot()
-##        
-##        
+       
     
 
 """ THE CAMERA PAGE ***************************************************"""
@@ -3989,17 +4097,17 @@ def updateTabTimerImage(tabTimerSelected):
         print("map 0 is not viewable")
         return
     fileName=cwd + "/House" + "{0:0>2}".format(SliderStartHouse[tabTimerSelected].get()) + \
-                          "/maps"+"{0:0>2}".format(SliderStartMap[tabTimerSelected].get())+"/fullHouseMap.png"
+                          "/maps"+"{0:0>2}".format(SliderStartMap[tabTimerSelected].get())+"/MAIN.npy"
     print (fileName)
 
     if (os.path.exists(fileName)):
-        img2 = Image.open(fileName)
-        img3=img2.resize((250, 200), Image.LANCZOS)
+        #img2 = Image.open(fileName)
+        #img3=img2.resize((250, 200), Image.LANCZOS)
         #image02= ImageTk.PhotoImage(img3)
-        image02= imgGps
+        image02= imgHouseMap0
         #ImageMap.configure(text='find')
         ImageMap.configure(image=image02)       
-        #ImageMap.update()
+        ImageMap.update()
         print('find')
 
 
@@ -4013,10 +4121,11 @@ def updateTabTimerImage(tabTimerSelected):
                 
     else:
         
-        image03 = imgJoystick          
-        ImageMap.configure(image=image03)
-        #ImageMap.configure(text='lost')
-        #ImageMap.update()
+        image02= imgHouseNoMap
+        #ImageMap.configure(text='find')
+        ImageMap.configure(image=image02)       
+        ImageMap.update()
+        
         print('lost')
 
    
@@ -4202,13 +4311,7 @@ FrameLaneParameter=[None]*15
 #RdBtn_ByLane=[None]*15
 #RdBtn_Perimeter=[None]*15
 
-fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
-                          "/maps"+"{0:0>2}".format(1)+"/fullhousemap.png"
-img2 = Image.open(fileName)
-#img3=img2.resize((250, 200), Image.LANCZOS)
-img3=img2.resize((250, 200), Image.ANTIALIAS)
 
-image01= ImageTk.PhotoImage(img3)
     
 
 for i in range(15):
@@ -4247,21 +4350,22 @@ for i in range(15):
     SliderStartMap[i].place(x=200,y=200, height=35, width=200)
     SliderStartMap[i].bind("<ButtonRelease-1>", onSliderMapChange)
 
-##    fileName=cwd + "/House00/maps05/fullHouseMap.png"
-##    img2 = Image.open(fileName)
-##    img3=img2.resize((250, 200), Image.LANCZOS)
-##    image02= ImageTk.PhotoImage(img3)
-    image02= imgGps
+
+    fileName=cwd + "/House00/fullHouseMap.png"
+    img2 = Image.open(fileName)
+    img3=img2.resize((250, 200), Image.LANCZOS)
+    image01= ImageTk.PhotoImage(img3)
+    #image01= imgGps
     
    
-    FrameMowPattern[i] = tk.Frame(SheetTimer[i],borderwidth="1",relief=tk.SUNKEN)
-    FrameMowPattern[i].place(x=410, y=180, height=200, width=250)
-    imageMapCanvas[i] = tk.Canvas(FrameMowPattern[i])
+##    FrameMowPattern[i] = tk.Frame(SheetTimer[i],borderwidth="1",relief=tk.SUNKEN)
+##    FrameMowPattern[i].place(x=410, y=180, height=200, width=250)
+##    imageMapCanvas[i] = tk.Canvas(FrameMowPattern[i])
+##    
+##    imageMapCanvas[i].create_image(0,0, image = image01, anchor = "nw")
     
-    #imageMapCanvas[i].create_image(0,0, image = image01, anchor = "nw")
-    
-    itemImageMapCanvas[i]=imageMapCanvas[i].create_image(0,0, image = image02, anchor = "nw")
-    imageMapCanvas[i].pack(expand = tk.YES, fill = tk.BOTH)
+##    itemImageMapCanvas[i]=imageMapCanvas[i].create_image(0,0, image = image02, anchor = "nw")
+##    imageMapCanvas[i].pack(expand = tk.YES, fill = tk.BOTH)
     #itemImageMapCanvas[i].pack(expand = tk.YES, fill = tk.BOTH)
         
 
@@ -4439,8 +4543,12 @@ ButtonSaveTimer.place(x=680,y=265, height=25, width=150)
 ButtonSaveTimer.configure(command = save_TimerList)
 ButtonSaveTimer.configure(text="Save Timer")
 
-ImageMap=tk.Label(TabTimer, text='COUCOU',font=("Arial", 20), fg='red')
-ImageMap.place(x=10,y=260, height=140, width=390)
+
+
+
+
+ImageMap=tk.Label(TabTimer, font=("Arial", 20), fg='red')
+ImageMap.place(x=410,y=210, height=200, width=250)
 #FrameLaneParameter[i] = tk.Frame(SheetTimer[i],borderwidth="1",relief=tk.SUNKEN)
 #FrameLaneParameter[i].place(x=10, y=240, height=140, width=390)
 #ButtonCheckTimer = tk.Button(TabTimer)

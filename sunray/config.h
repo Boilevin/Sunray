@@ -2,7 +2,7 @@
 // Copyright (c) 2013-2020 by Alexander Grau, Grau GmbH
 // Licensed GPLv3 for open source use
 // or Grau GmbH Commercial License for commercial use (http://grauonline.de/cms2/?page_id=153)
-// RL1000 version with INA226
+
 /* 
    WARNING: all software, hardware and motor components are designed and optimized as a whole, if you 
    try to replace or exclude some component not as designed, you risk to damage your hardware with 
@@ -61,6 +61,7 @@ Also, you may choose the serial port below for serial monitor output (CONSOLE).
 #define DRV_ARDUMOWER     1   // keep this for Ardumower
 //#define DRV_SIM_ROBOT     1   // simulation
 
+#define TIMETABLEALLOWED false //use the sunray timetable or not
 
 //on robomow you have 3 mow motor and sense is read over I2C using INA226 module
 #define INA226_MOW_SENSE true

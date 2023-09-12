@@ -145,10 +145,8 @@ void OdometryLeftISR(){
 }
 
 void OdometryRightISR(){			
-  
   odomTicksRight++; 
-  asm("dsb");          
-  
+  asm("dsb");    
 }
 
 

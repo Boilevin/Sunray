@@ -53,8 +53,8 @@ void TimeTable::setCurrentTime(int hour, int min, int dayOfWeek){
     currentTime.hour = hour;
     currentTime.min = min;
     currentTime.dayOfWeek = dayOfWeek;
-    CONSOLE.print("GPS time (UTC): ");
-    dumpWeekTime(currentTime);
+    //CONSOLE.print("GPS time (UTC): ");
+    // dumpWeekTime(currentTime);
 }    
 
 void TimeTable::dumpWeekTime(weektime_t time){
@@ -209,7 +209,7 @@ bool TimeTable::findAutostopTime(weektime_t &time){
 bool TimeTable::findAutostartTime(weektime_t &time){    
     time.dayOfWeek = NOT_SET;
     if ( !DOCKING_STATION ){
-       // bber100
+        //bber100
         CONSOLE.println("AUTOSTART: not defined DOCKING_STATION");
         return false; 
     }
@@ -298,7 +298,8 @@ bool TimeTable::shouldAutostopNow(){
 void TimeTable::run(){    
     //if (millis() < nextCheckTime) return;
     //nextCheckTime = millis() + 30000;    
-
+    if(!TIMETABLEALLOWED) return;
+    
     bool allowed = mowingAllowed(currentTime);
     if (allowed != lastMowingAllowedState){
         lastMowingAllowedState = allowed;
@@ -340,3 +341,5 @@ int TimeTable::calcDayOfWeek(int year, int month, int day){
     int dayOfWeek = (e % 7);
     return dayOfWeek;
 }
+
+

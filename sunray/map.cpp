@@ -620,7 +620,10 @@ bool Map::save(){
 
 
 void Map::finishedUploadingMap(){
+  //bber100
+  CONSOLE.println("FI,"); 
   CONSOLE.println("finishedUploadingMap");
+
   #ifdef DRV_SIM_ROBOT
     float x;
     float y;

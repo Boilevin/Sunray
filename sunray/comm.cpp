@@ -102,7 +102,7 @@ void cmdTuneParam(){
             case 3: 
               stanleyTrackingSlowK = floatValue;
               break;
-              case 4:
+            case 4:
               motor.ticksPerRevolution = int(floatValue);
               break;
             case 5:
@@ -339,8 +339,8 @@ void cmdWaypoint(){
   float y=0;
   bool success = true;
   //bber2
-  CONSOLE.print("cmd W: ");
-  CONSOLE.println(cmd);
+  //CONSOLE.print("cmd W: ");
+  //CONSOLE.println(cmd);
   for (int idx=0; idx < cmd.length(); idx++){
     char ch = cmd[idx];
     //Serial.print("ch=");
@@ -355,6 +355,7 @@ void cmdWaypoint(){
       } else if (counter == 3){
           y = floatValue;
           if (!maps.setPoint(widx, x, y)){
+            CONSOLE.println("error while adding waypoint");
             success = false;
             break;
           }          
@@ -983,15 +984,29 @@ void cmdSummary(){
   s += ",";
   s += lateralError;
   s += ",";
-  if (stateOp == OP_MOW){
-    s += timetable.autostopTime.dayOfWeek;
-    s += ",";  
-    s += timetable.autostopTime.hour;
-  } else if (stateOp == OP_CHARGE) {
-    s += timetable.autostartTime.dayOfWeek;
-    s += ",";  
-    s += timetable.autostartTime.hour;
-  } else {
+  //bber
+  if (TIMETABLEALLOWED)
+  {
+
+    if (stateOp == OP_MOW)
+    {
+      s += timetable.autostopTime.dayOfWeek;
+      s += ",";
+      s += timetable.autostopTime.hour;
+    }
+    else if (stateOp == OP_CHARGE)
+    {
+      s += timetable.autostartTime.dayOfWeek;
+      s += ",";
+      s += timetable.autostartTime.hour;
+    }
+    else
+    {
+      s += "-1,0";
+    }
+  }
+  else
+  {
     s += "-1,0";
   }
   cmdAnswer(s);  
