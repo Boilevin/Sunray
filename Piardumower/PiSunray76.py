@@ -1,6 +1,9 @@
 ###!/usr/bin/env python3
 
-PiVersion="71"
+#axes.add_patch(Polygon([(0, 0), (1, 0.2), (0.3, 0.4), (0.2, 1)],
+#                       closed=True, facecolor='red'))
+
+PiVersion="76"
 from pathlib import Path
 import traceback
 import sys
@@ -278,7 +281,6 @@ MainDHT22Use= tk.IntVar()
 MainlawnSensorUse= tk.IntVar()
 tk_MaintimerUse= tk.IntVar()
 tk_infoTimer=tk.StringVar()
-
 tk_MainrainUse= tk.IntVar()
 tk_useDebugConsole = tk.IntVar()
 
@@ -446,7 +448,9 @@ class mower:
         self.TimerMapToStart = 0
         self.startAfterUploadFinish = False
 
-        self.useDebugConsole = 0
+        self.useDebugConsole = False
+        self.timerUse = False
+        self.rainUse = False
         
         
         
@@ -1055,7 +1059,7 @@ def decode_AT_message(message):  #decode sunray console message
 ##                know_message=True
 
             if not (know_message):
-                consoleInsertText(str(message)+ '\n')
+                consoleInsertText(str(message))
                 
 
 
@@ -1348,14 +1352,20 @@ def refreshMotorSettingPage():
 def refreshMainSettingPage():
    
     ChkBtntimerUse.deselect()
-    if myRobot.timerUse==1:
+    tk_MaintimerUse.set(0)
+    if (mymower.timerUse):
+        tk_MaintimerUse.set(1)
         ChkBtntimerUse.select()     
     ChkBtnrainUse.deselect()
-    if myRobot.rainUse==1:
+    tk_MainrainUse.set(0)
+    if (mymower.rainUse):
+        tk_MainrainUse.set(1)
         ChkBtnrainUse.select()
     ChkBtnuseDebugConsole.deselect()
-    if mymower.useDebugConsole==1:
+    tk_useDebugConsole.set(0)
+    if (mymower.useDebugConsole):
         ChkBtnuseDebugConsole.select()
+        tk_useDebugConsole.set(1)
 
     
     
@@ -1611,6 +1621,11 @@ imgBack=tk.PhotoImage(file=cwd + "/icons/back.png")
 imgBladeStop = tk.PhotoImage(file=cwd + "/icons/bladeoff.png")
 imgBladeStart = tk.PhotoImage(file=cwd + "/icons/bladeon.png")
 imgForward=tk.PhotoImage(file=cwd + "/icons/forward.png")
+imgForwardLeft=tk.PhotoImage(file=cwd + "/icons/forLeft.png")
+imgForwardRight=tk.PhotoImage(file=cwd + "/icons/forRight.png")
+
+
+
 imgReverse=tk.PhotoImage(file=cwd + "/icons/reverse.png")
 imgLeft=tk.PhotoImage(file=cwd + "/icons/left.png")
 imgRight=tk.PhotoImage(file=cwd + "/icons/right.png")
@@ -1631,10 +1646,6 @@ imgJoystickOFF=tk.PhotoImage(file=cwd + "/icons/joystick_off.png")
 imgJoystick=tk.PhotoImage(file=cwd + "/icons/joystick.png")
 imgMaps=tk.PhotoImage(file=cwd + "/icons/map.png")
 
-imgHouseMap0=tk.PhotoImage(file=cwd + "/House00/fullHouseMap.png")
-imgHouseNoMap=tk.PhotoImage(file=cwd + "/icons/map.png")
-
-
 
 
 """ THE SETTING PAGE ****************************************************"""
@@ -1651,8 +1662,8 @@ def ButtonSaveSettingToFile_click():
     ButtonSetMainApply_click()
     setting_list.append(LinearSpeedSlider.get())
     setting_list.append(DockingSpeedSlider.get())
-    setting_list.append(tk_MaintimerUse.get())
-    setting_list.append(tk_MainrainUse.get())
+    setting_list.append(mymower.timerUse)
+    setting_list.append(mymower.rainUse)
 
     ButtonSetMotApply_click()
     setting_list.append(sliderPowerMax.get())
@@ -1692,8 +1703,8 @@ def ButtonReadSettingFromFile_click():
     
     LinearSpeedSlider.set(setting_list[3])
     DockingSpeedSlider.set(setting_list[4])
-    myRobot.timerUse=setting_list[5]
-    myRobot.rainUse=setting_list[6]
+    mymower.timerUse=setting_list[5]
+    mymower.rainUse=setting_list[6]
    
 
     
@@ -1715,7 +1726,7 @@ def ButtonReadSettingFromFile_click():
     refreshBatterySettingPage()
 
     mymower.useDebugConsole=setting_list[16]
-    print("rr",mymower.useDebugConsole)
+    #print("rr",mymower.useDebugConsole)
     refreshMainSettingPage()
  
         
@@ -1780,15 +1791,15 @@ def ButtonSetImuApply_click():
 
 def ButtonSetMainApply_click():
 
-    myRobot.timerUse='0'
+    mymower.timerUse=False
     if tk_MaintimerUse.get()==1:
-        myRobot.timerUse='1'        
-    myRobot.rainUse='0'
+        mymower.timerUse=True       
+    mymower.rainUse=False
     if tk_MainrainUse.get()==1:
-        myRobot.rainUse='1'
-    mymower.useDebugConsole=0
+        mymower.rainUse=True
+    mymower.useDebugConsole=False
     if tk_useDebugConsole.get()==1:
-        mymower.useDebugConsole=1
+        mymower.useDebugConsole=True
     
 
 TabSetting=ttk.Notebook(fen1)
@@ -1826,8 +1837,15 @@ TabSetting.add(tabVision,text="Vision")
 
 """************* Main setting *****************************"""
 
+def updateChkBtnrainUse(event):
+   ButtonSetMainApply_click()
+   
 def updateBtnuseDebugConsole(event):
-    mymower.useDebugConsole=tk_useDebugConsole.get()
+   ButtonSetMainApply_click()
+
+def updateChkBtntimerUse(event):
+   ButtonSetMainApply_click()
+    
     
 def updateDockingSpeedSlider(event):
     print("updateDockingSpeedSlider",str(DockingSpeedSlider.get()))
@@ -1847,9 +1865,9 @@ ButtonReadSettingFromFile.configure(command = ButtonReadSettingFromFile_click)
 ButtonReadSettingFromFile.configure(text="Read")
 
 ButtonFlashDue= tk.Button(tabMain)
-ButtonFlashDue.place(x=30,y=175, height=80, width=100)
+ButtonFlashDue.place(x=0,y=175, height=30, width=200)
 ButtonFlashDue.configure(command = ButtonFlashDue_click)
-ButtonFlashDue.configure(text="Update DUE Firmware")
+ButtonFlashDue.configure(text="Update ROBOT Firmware")
 
 ##def ButtonReboot_click():
 ##    #01/09/2023 actualy nothing dev here because reboot can power off PCB and pi
@@ -1867,17 +1885,21 @@ DockingSpeedSlider.place(x=270,y=65,width=200, height=55)
 DockingSpeedSlider.set(0.2)
 DockingSpeedSlider.bind("<ButtonRelease-1>", updateDockingSpeedSlider)
 
-ChkBtntimerUse=tk.Checkbutton(tabMain, text="Use Timer",relief=tk.SOLID,variable=tk_MaintimerUse,anchor='nw')
+ChkBtntimerUse=tk.Checkbutton(tabMain, text="Use Timer",relief=tk.SOLID,variable=tk_MaintimerUse,onvalue=1,offvalue=0,anchor='nw')
 ChkBtntimerUse.place(x=530,y=40,width=250, height=20)
-ChkBtnrainUse=tk.Checkbutton(tabMain, text="Use Rain Sensor",relief=tk.SOLID,variable=tk_MainrainUse,anchor='nw')
+ChkBtntimerUse.bind("<ButtonRelease-1>", updateChkBtntimerUse)
+
+ChkBtnrainUse=tk.Checkbutton(tabMain, text="Use Rain Sensor",relief=tk.SOLID,variable=tk_MainrainUse,onvalue=1,offvalue=0,anchor='nw')
 ChkBtnrainUse.place(x=530,y=70,width=250, height=20)
-ChkBtnuseDebugConsole=tk.Checkbutton(tabMain, text="Debug console",relief=tk.SOLID,variable=tk_useDebugConsole,anchor='nw')
+ChkBtnrainUse.bind("<ButtonRelease-1>", updateChkBtnrainUse)
+
+ChkBtnuseDebugConsole=tk.Checkbutton(tabMain, text="Debug console",relief=tk.SOLID,variable=tk_useDebugConsole,onvalue=1,offvalue=0,anchor='nw')
 ChkBtnuseDebugConsole.place(x=530,y=100,width=250, height=20)
 ChkBtnuseDebugConsole.bind("<ButtonRelease-1>", updateBtnuseDebugConsole)
 
-ButtonSetMainApply = tk.Button(tabMain)
-ButtonSetMainApply.place(x=300,y=350, height=25, width=100)
-ButtonSetMainApply.configure(command = ButtonSetMainApply_click,text="Send To Mower")
+#ButtonSetMainApply = tk.Button(tabMain)
+#ButtonSetMainApply.place(x=300,y=350, height=25, width=100)
+#ButtonSetMainApply.configure(command = ButtonSetMainApply_click,text="Send To Mower")
 
 
 
@@ -2344,7 +2366,7 @@ def initialPlotAutoPageFullHouse():
     mymower.totalMowingArea=0
     if (os.path.exists(fileName)):
         crcMapList=np.load(fileName)
-        print(crcMapList)
+        #print(crcMapList)
         for idx in range(int(len(crcMapList))):
             mapNr=int(crcMapList[idx,0])
             mymower.mapNrList.append(mapNr)
@@ -2353,7 +2375,16 @@ def initialPlotAutoPageFullHouse():
             if (os.path.exists(fileName)):
                 perimeterArray=np.load(fileName)
                 polygon1 = Polygon(np.squeeze(perimeterArray))
+
+
+
+                
                 mymower.polygon[mapNr] = polygon1 #keep the polygon for later search
+
+
+                #pp3 = plt.Polygon(np.squeeze(perimeterArray))
+                #axLiveMap.add_patch(pp3)
+
                 
                 #print(str(mapNr)+ " " +str(int(polygon1.area)))
                 mymower.totalMowingArea=mymower.totalMowingArea+int(polygon1.area)                #print(polygon1.centroid.coords[0][0]) center of polygon
@@ -2571,19 +2602,36 @@ def buttonBlade_start_click():
 
 def ButtonForward_click():
     ButtonReverse.configure(state='disabled')
-    message="AT+M," + str(manualSpeedSlider.get()) + ",0"
+    message="AT+M," + str(manualSpeedSlider.get()) + ",0,0"
+    message=str(message)
+    message=message + '\r'
+    send_serial_message(message)
+
+def ButtonForwardLeft_click():
+    ButtonReverse.configure(state='disabled')
+    message="AT+M," + str(manualSpeedSlider.get()) + "," + str(manualSpeedSlider.get()) + ",0"
+    message=str(message)
+    message=message + '\r'
+    send_serial_message(message)
+
+def ButtonForwardRight_click():
+    ButtonReverse.configure(state='disabled')
+    message="AT+M," + str(manualSpeedSlider.get()) + "," + str(-1*manualSpeedSlider.get()) + ",0"
     message=str(message)
     message=message + '\r'
     send_serial_message(message)
     
+    
 def ButtonRight_click():
-    message="AT+M," + str(manualSpeedSlider.get()) + ",-0.5,0"
+    ButtonReverse.configure(state='disabled')
+    message="AT+M," + str(0.3*manualSpeedSlider.get()) + "," + str(-1*manualSpeedSlider.get()) + ",0"
     message=str(message)
     message=message + '\r'
     send_serial_message(message)
     
 def ButtonLeft_click():
-    message="AT+M," + str(manualSpeedSlider.get()) + "," + str(manualSpeedSlider.get()) + ",0"
+    ButtonReverse.configure(state='disabled')
+    message="AT+M," + str(0.3*manualSpeedSlider.get()) + "," + str(manualSpeedSlider.get()) + ",0"
     message=str(message)
     message=message + '\r'
     send_serial_message(message)
@@ -2608,16 +2656,22 @@ Frame1 = tk.Frame(ManualPage)
 Frame1.place(x=0, y=0, height=300, width=300)
 
 
-ButtonForward = tk.Button(Frame1,image=imgForward, command = ButtonForward_click)
+ButtonForward = tk.Button(Frame1,image=imgForward, command = ButtonForward_click,repeatdelay=500, repeatinterval=500)
 ButtonForward.place(x=100, y=0, height=100, width=100)
+
+ButtonForwardLeft = tk.Button(Frame1,image=imgForwardLeft, command = ButtonForwardLeft_click,repeatdelay=500, repeatinterval=500)
+ButtonForwardLeft.place(x=0, y=0, height=100, width=100)
+
+ButtonForwardRight = tk.Button(Frame1,image=imgForwardRight, command = ButtonForwardRight_click,repeatdelay=500, repeatinterval=500)
+ButtonForwardRight.place(x=200, y=0, height=100, width=100)
 
 ButtonStop = tk.Button(Frame1,image=imgStop, command = ButtonStop_click)
 ButtonStop.place(x=100, y=100, height=100, width=100)
 
-ButtonRight = tk.Button(Frame1,image=imgRight, command = ButtonRight_click)
+ButtonRight = tk.Button(Frame1,image=imgRight, command = ButtonRight_click,repeatdelay=500, repeatinterval=500)
 ButtonRight.place(x=200, y=100, height=100, width=100)
 
-ButtonLeft = tk.Button(Frame1,image=imgLeft, command = ButtonLeft_click)
+ButtonLeft = tk.Button(Frame1,image=imgLeft, command = ButtonLeft_click,repeatdelay=500, repeatinterval=500)
 ButtonLeft.place(x=0, y=100, height=100, width=100)
 
 ButtonReverse = tk.Button(Frame1,image=imgReverse,command = ButtonReverse_click)
@@ -2662,6 +2716,7 @@ ButtonBackHome.place(x=680, y=280, height=120, width=120)
 """ The Console page  ************************************"""
 
 def ButtonListVar_click():
+ 
     fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
                           "/maps02"+"/DOCK.npy"
 ##    if (os.path.exists(fileName)):
@@ -2710,7 +2765,11 @@ def ButtonListVar_click():
 
 
 def ButtonConsoleMode_click():
-    send_pfo_message('h03','1','2','3','4','5','6',)
+    message="AT+Y2,0"
+    message=str(message)
+    message=message + '\r'
+    send_serial_message(message)  
+    
 
 def ButtonClearConsole_click():
     
@@ -2752,12 +2811,11 @@ txtConsoleRecu.place(x=0,y=5,anchor='nw',width=800, height=290)
 
 ButtonConsoleMode = tk.Button(ConsolePage)
 ButtonConsoleMode.place(x=660,y=15, height=25, width=120)
-ButtonConsoleMode.configure(command = ButtonConsoleMode_click,text="Mode")
+ButtonConsoleMode.configure(command = ButtonConsoleMode_click,text="GPS reboot")
 
-
-ButtonListVar = tk.Button(ConsolePage)
-ButtonListVar.place(x=660,y=45, height=25, width=120)
-ButtonListVar.configure(command = ButtonListVar_click,text="List Var")
+##ButtonListVar = tk.Button(ConsolePage)
+##ButtonListVar.configure(command = ButtonListVar_click,text="List Var")
+##ButtonListVar.place(x=660,y=45, height=25, width=120)
 
 ButtonClearConsole = tk.Button(ConsolePage)
 ButtonClearConsole.place(x=660,y=75, height=35, width=120)
@@ -2980,10 +3038,12 @@ ButtonBackHome.place(x=680, y=280, height=120, width=120)
 
 
 """ THE MAPS PAGE ***************************************************"""
-def showFullMapTab():
 
-   
-    
+
+
+
+
+def showFullMapTab(): #tab 0 show the full map
     ax[0].clear()
     fileName=cwd + "/House" + "{0:0>2}".format(mymower.House)+"/crcMapList.npy"
     mymower.totalMowingArea=0
@@ -3087,11 +3147,19 @@ def showFullMapTab():
     
 
 def onTabChange(event):
-    print(event)
     mymower.mapSelected = int(MapsPage.index("current"))
     if (mymower.mapSelected == 0):
+        ButtonDeleteMap.place_forget()
+        ButtonExportMap.place_forget()
+        ButtonImportMap.place_forget()
         showFullMapTab()
         return
+    else:
+         ButtonDeleteMap.place(x=680,y=50,height=60, width=110)
+         ButtonExportMap.place(x=680,y=115,height=60, width=110)
+         ButtonImportMap.place(x=680,y=180,height=60, width=110)
+
+       
 
     fileName=cwd + "/House" + "{0:0>2}".format(mymower.House) + \
                           "/maps"+"{0:0>2}".format(mymower.mapSelected)+"/MAIN.npy"      
@@ -3480,7 +3548,7 @@ def import_map_from_mower():
     
     
 def plot():
-    print("PLOT CRC LIST")
+    #print("PLOT CRC LIST")
     ax[mymower.mapSelected].clear()
     #fig[mymower.mapSelected].clear()
     perimeterCRC=0
@@ -3510,7 +3578,7 @@ def plot():
         messagebox.showwarning('warning',"No perimeter for this map ???")
 
     
-    print("perimeterCRC ",perimeterCRC)
+    #print("perimeterCRC ",perimeterCRC)
 
     #draw mow    
     mowCRC=0
@@ -3530,7 +3598,7 @@ def plot():
     else:
         messagebox.showwarning('warning',"No mowing points for this map ?????")
 
-    print ("mowCRC ",mowCRC)
+    #print ("mowCRC ",mowCRC)
     
     #draw exclusion
     exclusionCRC=0
@@ -3555,7 +3623,7 @@ def plot():
             #canvas[mymower.mapSelected].draw()
         else:
             messagebox.showwarning('warning',"No exclusion points for this map ?????")
-    print("exclusionCRC ",exclusionCRC)
+    #print("exclusionCRC ",exclusionCRC)
     
     #draw dock
     dockCRC=0
@@ -3564,7 +3632,7 @@ def plot():
 
     if (os.path.exists(fileName)):
         mowPts=np.load(fileName)
-        print(mowPts)
+        #print(mowPts)
         x_lon = np.zeros(int(len(mowPts)))
         y_lat = np.zeros(int(len(mowPts)))
         for ip in range(int(len(mowPts))):
@@ -3577,7 +3645,7 @@ def plot():
         messagebox.showwarning('warning',"No dock points for this map ?????")
 
 
-    print("dockCRC " , dockCRC)
+    #print("dockCRC " , dockCRC)
     mymower.plotMapCRC=perimeterCRC+mowCRC+dockCRC+exclusionCRC
     ctrl=int(mymower.plotMapCRC)-int(mymower.fileMapCRC)
     if (abs(ctrl)>mymower.mapCrcRoundingRange):
@@ -3628,13 +3696,14 @@ InfoHouseNrtxt = tk.Label(MapsPage, text=mymower.House,font=("Arial", 30), fg='r
 InfoHouseNrtxt.place(x=515,y=30, height=60, width=60)
 
 ButtonDeleteMap = tk.Button(MapsPage,text="Delete This Map", wraplength=80,  command = delete_map)
-ButtonDeleteMap.place(x=680,y=5,height=60, width=110)
+ButtonDeleteMap.place(x=680,y=50,height=60, width=110)
 
 ButtonExportMap = tk.Button(MapsPage,text="EXPORT TO ROBOT", wraplength=80,  command = ButtonExportMap_click)
-ButtonExportMap.place(x=680,y=80,height=60, width=110)
+ButtonExportMap.place(x=680,y=115,height=60, width=110)
 
 ButtonImportMap = tk.Button(MapsPage,text="IMPORT FROM ROBOT", wraplength=80,  command = import_map_from_mower)
 ButtonImportMap.place(x=680,y=180,height=60, width=110)
+
 ButtonBackHome = tk.Button(MapsPage, image=imgBack, command = ButtonBackToMain_click)
 ButtonBackHome.place(x=680, y=280, height=119, width=115)
        
@@ -4090,7 +4159,7 @@ def onSliderHouseChange(event):
 def onTabTimerChange(event):
     print("tab timer change")
     tabTimerSelected = int(TabTimer.index("current"))
-    #updateTabTimerImage(tabTimerSelected)
+    updateTabTimerImage(tabTimerSelected)
     
 def updateTabTimerImage(tabTimerSelected):
     if (SliderStartMap[tabTimerSelected].get()==0):
@@ -4098,46 +4167,20 @@ def updateTabTimerImage(tabTimerSelected):
         return
     fileName=cwd + "/House" + "{0:0>2}".format(SliderStartHouse[tabTimerSelected].get()) + \
                           "/maps"+"{0:0>2}".format(SliderStartMap[tabTimerSelected].get())+"/MAIN.npy"
-    print (fileName)
-
-    if (os.path.exists(fileName)):
-        #img2 = Image.open(fileName)
-        #img3=img2.resize((250, 200), Image.LANCZOS)
-        #image02= ImageTk.PhotoImage(img3)
-        image02= imgHouseMap0
-        #ImageMap.configure(text='find')
+    if (os.path.exists(fileName)):   
+        image02= imgHouseMap[SliderStartHouse[tabTimerSelected].get()]
         ImageMap.configure(image=image02)       
+        ImageMap.update()            
+    else:   
+        ImageMap.configure(image=imgHouseNoMap)       
         ImageMap.update()
-        print('find')
 
-
-##        imageMapCanvas[tabTimerSelected].forget_pack()
-##        
-##        imageMapCanvas[tabTimerSelected].create_image(0,0, image = image02, anchor = "nw")
-##        imageMapCanvas[tabTimerSelected].pack(expand = tk.YES, fill = tk.BOTH)
-##
-##        imageMapCanvas[tabTimerSelected].update()
-##        FrameMowPattern[tabTimerSelected].update()
-                
-    else:
-        
-        image02= imgHouseNoMap
-        #ImageMap.configure(text='find')
-        ImageMap.configure(image=image02)       
-        ImageMap.update()
-        
-        print('lost')
-
-   
-    
-
-    
 def SliderHourStartGroup_click(var1):
     pass
     #print("heure change "+str(var1))
      
 def checkTimerStop():
-    if (myRobot.timerUse):
+    if (mymower.timerUse):
         print("checktimer stop : ",mymower.ActualRunningTimer, " / " , mymower.lastRunningTimer)
         print("++/"+mymower.opNames+"/++")
         #stop part
@@ -4172,7 +4215,7 @@ def checkTimerStop():
 def checkTimerStart():
     if (mymower.opNames != "DOCK"):
         return
-    if (myRobot.timerUse):
+    if (mymower.timerUse):
         print("checktimer start : ",mymower.ActualRunningTimer, " / " , mymower.lastRunningTimer)
         #start part
         info01="checktimer : " + str(mymower.ActualRunningTimer) + " / " + str(mymower.lastRunningTimer)
@@ -4312,7 +4355,17 @@ FrameLaneParameter=[None]*15
 #RdBtn_Perimeter=[None]*15
 
 
-    
+#create the house map image for fast preview into timer page
+imgHouseNoMap=tk.PhotoImage(file=cwd + "/icons/noMap.png")
+imgHouseMap=[ImageTk.PhotoImage]*10
+for i in range (10):
+   fileName=cwd + "/House" + "{0:0>2}".format(i) + "/fullHouseMap.png"
+   if (os.path.exists(fileName)):
+      img2 = Image.open(fileName)
+      img3=img2.resize((250, 200), Image.LANCZOS)
+      imgHouseMap[i] = ImageTk.PhotoImage(img3)
+      
+       
 
 for i in range(15):
     ChkBtnEnableGroup[i] = tk.Checkbutton(SheetTimer[i],text="Enable this Timer",font=("Arial", 14), fg='red',variable=tk_timerActive[i],anchor = 'w')
@@ -4351,11 +4404,6 @@ for i in range(15):
     SliderStartMap[i].bind("<ButtonRelease-1>", onSliderMapChange)
 
 
-    fileName=cwd + "/House00/fullHouseMap.png"
-    img2 = Image.open(fileName)
-    img3=img2.resize((250, 200), Image.LANCZOS)
-    image01= ImageTk.PhotoImage(img3)
-    #image01= imgGps
     
    
 ##    FrameMowPattern[i] = tk.Frame(SheetTimer[i],borderwidth="1",relief=tk.SUNKEN)
@@ -4549,6 +4597,7 @@ ButtonSaveTimer.configure(text="Save Timer")
 
 ImageMap=tk.Label(TabTimer, font=("Arial", 20), fg='red')
 ImageMap.place(x=410,y=210, height=200, width=250)
+
 #FrameLaneParameter[i] = tk.Frame(SheetTimer[i],borderwidth="1",relief=tk.SUNKEN)
 #FrameLaneParameter[i].place(x=10, y=240, height=140, width=390)
 #ButtonCheckTimer = tk.Button(TabTimer)
@@ -4556,6 +4605,9 @@ ImageMap.place(x=410,y=210, height=200, width=250)
 #ButtonCheckTimer.configure(command = checkTimerStart,text="checkTimerStart")
 
 ButtonBackHome = tk.Button(TabTimer, image=imgBack, command = ButtonBackToMain_click)
+#ButtonBackHome = tk.Button(TabTimer, image=imgHouseMap[0], command = ButtonBackToMain_click)
+
+
 ButtonBackHome.place(x=680, y=310, height=120, width=120)
 
 
@@ -4599,14 +4651,14 @@ ButtonTest = tk.Button(MainPage,image=imgTest)
 ButtonTest.place(x=550,y=10, height=130, width=100)
 ButtonTest.configure(command = ButtonTest_click)
 
-ButtonPlot = tk.Button(MainPage, image=imgPlot, command = ButtonPlot_click)
-ButtonPlot.place(x=10,y=145,width=100, height=130)
+#ButtonPlot = tk.Button(MainPage, image=imgPlot, command = ButtonPlot_click)
+#ButtonPlot.place(x=10,y=145,width=100, height=130)
 
 ButtonSchedule = tk.Button(MainPage, image=imgSchedule, command = ButtonSchedule_click)
 ButtonSchedule.place(x=145,y=145,width=100, height=130)
 
-ButtonCamera = tk.Button(MainPage, image=imgCamera, command = ButtonCamera_click)
-ButtonCamera.place(x=280,y=145,width=100, height=130)
+#ButtonCamera = tk.Button(MainPage, image=imgCamera, command = ButtonCamera_click)
+#ButtonCamera.place(x=280,y=145,width=100, height=130)
 
 #ButtonGps = tk.Button(MainPage, image=imgGps, command = ButtonGps_click)
 #ButtonGps.place(x=415,y=145,width=100, height=130)
