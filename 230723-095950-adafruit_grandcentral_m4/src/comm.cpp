@@ -1335,7 +1335,9 @@ void processCmd(bool checkCrc, bool decrypt){
 void processConsole(){
   char ch;      
   if (CONSOLE.available()){
-    battery.resetIdle();  
+    //bber 300
+    // do not reset idle when raspberry pi query(AT+S) or the poweroffIdle can't work
+    if (!raspberryUse) battery.resetIdle();  
     while ( CONSOLE.available() ){               
       ch = CONSOLE.read();          
       if ((ch == '\r') || (ch == '\n')) {        

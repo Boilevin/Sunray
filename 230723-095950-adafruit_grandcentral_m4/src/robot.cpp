@@ -891,12 +891,12 @@ void run(){
     nextTempTime = millis() + 60000;    
     float batTemp = batteryDriver.getBatteryTemperature();
     float cpuTemp = robotDriver.getCpuTemperature();    
-    CONSOLE.print("batTemp=");
-    CONSOLE.print(batTemp,0);
-    CONSOLE.print("  cpuTemp=");
-    CONSOLE.print(cpuTemp,0);    
+    //CONSOLE.print("batTemp=");
+    //CONSOLE.print(batTemp,0);
+    //CONSOLE.print("  cpuTemp=");
+    //CONSOLE.print(cpuTemp,0);    
     //logCPUHealth();
-    CONSOLE.println();    
+    //CONSOLE.println();    
     if (batTemp < -999){
       stateTemp = cpuTemp;
     } else {

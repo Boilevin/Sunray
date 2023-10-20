@@ -183,8 +183,9 @@ bool saveState(){
   //CONSOLE.println(crc);
   if (crc == stateCRC) return true;
   stateCRC = crc;
-  dumpState();
-  CONSOLE.print("save state... ");
+  //bber200
+  //dumpState();
+  //CONSOLE.print("save state... ");
   stateFile = SD.open("state.bin",  FILE_CREATE); // O_WRITE | O_CREAT);
   if (!stateFile){        
     CONSOLE.println("ERROR opening file for writing");
@@ -215,7 +216,7 @@ bool saveState(){
   res &= (stateFile.write((uint8_t*)&timetable.timetable, sizeof(timetable.timetable)) != 0);  
   res &= (stateFile.write((uint8_t*)&battery.docked, sizeof(battery.docked)) != 0);  
   if (res){
-    CONSOLE.println("ok");
+    //CONSOLE.println("ok");
   } else {
     CONSOLE.println("ERROR saving state");
   }

@@ -1018,7 +1018,7 @@ bool Map::startMowing(float stateX, float stateY){
 
 
 void Map::clearObstacles(){  
-  CONSOLE.println("clearObstacles");
+  //CONSOLE.println("clearObstacles");
   obstacles.dealloc();  
 }
 

@@ -134,6 +134,13 @@ void DockOp::onKidnapped(bool state){
 
 
 void DockOp::onObstacleRotation(){
+    //bber300 need to allow obstacle avoidance and not error if we are far from station
+    // maps.getDockingPos(dockX, dockY, dockDelta);
+    // float dist_dock = distance(dockX, dockY, stateX, stateY);
+    //     // only allow trackslow if we are near dock (below DOCK_UNDOCK_TRACKSLOW_DISTANCE)
+    // if (dist_dock > DOCK_UNDOCK_TRACKSLOW_DISTANCE) {
+    //     trackslow_allowed = false;
+    // }
     CONSOLE.println("error: rotation error due to obstacle!");    
     statMowObstacles++;   
     stateSensor = SENS_OBSTACLE;
